@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html><head><title>RCCreator to LIRC</title></head>
+<body><a></a><form action="#"><input type="file"></form>
+<a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
+<script type="text/javascript"><!--
+document.getElementsByTagName('input')[0].onchange = function(event) {
+    var rd = new FileReader(), name = event.target.files[0].name;
+    rd.onload = function(event) {
+        var items = new DOMParser().parseFromString(event.target.result,
+            'text/xml').getElementsByTagName('RCKey'), i, j, k, pr, conf;
+        for (j = 0; j < rcc.prs.length; j++) {
+            pr = rcc.prs[j];
+            if (pr[rcc.rcc] == items[0].getElementsByTagName('ID')[0].textContent.substring(0, 4)) break;
+        }
+        conf = 'begin remote\nname ' + name.replace(/\.xml/i, '')
+            .replace(/\s/g, '_') + '\n' + pr[rcc.lirc] + '\nbegin codes';
+        for (i = 0; i < items.length; i++) {
+            var inp = items[i].getElementsByTagName('ID')[0].textContent;
+            var adr = parseInt(inp.substring(4, 6), 16);
+            var out = ('0000000' + adr.toString(2)).slice(-8);
+            for (j = 0; j < 13; j++) {
+                k = parseInt(rcc.perm[adr].substring(j, j + 1), 16);
+                out += ('000' + ((parseInt(inp.substring(k + 6, k + 7), 16)
+                    - parseInt(rcc.key[adr].substring(j, j + 1), 16)
+                    ) & 0xf).toString(2)).slice(-4);
+            }
+            conf += '\n' + (items[i].getElementsByTagName('Name')[0].textContent != ''
+                ? items[i].getElementsByTagName('Name')[0].textContent.replace(/\s/g, '_')
+                : items[i].getElementsByTagName('Nkey')[0].textContent)
+                + ' 0x' + parseInt(out.substring(
+                    Math.min(pr[rcc.adrb], pr[rcc.cmdb], (pr[rcc.ncmdb] == -1 ? pr[rcc.cmdb] : pr[rcc.ncmdb])),
+                    Math.max(pr[rcc.adre], pr[rcc.cmde], (pr[rcc.ncmde] == -1 ? pr[rcc.cmde] : pr[rcc.ncmde]))
+                ), 2).toString(16).toUpperCase();
+        }
+        conf += '\nend codes\nend remote\n';
+        var link = document.getElementsByTagName('a')[0];
+        link.href = URL.createObjectURL(new Blob([ conf ], { type: 'text/plain' }));
+        link.textContent = link.download = name.replace(/\.xml/i, '.conf');
+    }
+    rd.readAsText(event.target.files[0]);
+}
+var rcc = { rcc: 0, adrb: 1, adre: 2, cmdb: 3, cmde: 4,
+    ncmdb: 5, ncmde: 6, rce: 7, msb: 8, lirc:9, prs: [
+[ '3155',  0, 16, 16, 24, 24, 32, 'NEC (uPD6121/6122, NEC1)'
+, '', 'flags SPACE_ENC|CONST_LENGTH\nfrequency 38000\nheader 9000 4500\n'
++ 'zero 560 560\none 560 1680\nbits 32\nptrail 560\ngap 108000\nrepeat 9000 2250' ],
+[ '3165',  0, 16, 16, 24, 24, 32, 'NEC (uPD6121G/6122A, NEC2)'
+, '', 'flags SPACE_ENC|CONST_LENGTH\nfrequency 38000\nheader 9000 4500\n'
++ 'zero 560 560\none 560 1680\nbits 32\nptrail 560\ngap 108000' ],
+[ '2345',  0, 16, 16, 24, 24, 32, 'NEC (TC9012/9028/9243, NECx1)'
+, '', 'flags SPACE_ENC|CONST_LENGTH\nfrequency 38000\nheader 4500 4500\n'
++ 'zero 560 560\none 560 1680\nbits 32\nptrail 560\ngap 108000\nrepeat 4500 4500' ],
+[ '2325',  0, 16, 16, 24, 24, 32, 'NEC (TC9012A/9028/9243, NECx2)'
+, '', 'flags SPACE_ENC|CONST_LENGTH\nfrequency 38000\nheader 4500 4500\n'
++ 'zero 560 560\none 560 1680\nbits 32\nptrail 560\ngap 108000' ],
+[ '0232',  1,  6,  6, 12, -1, -1, 'RC-5 (SAA3010)', 'MSB'
+, 'flags RC5|CONST_LENGTH\nfrequency 36000\nzero 890 890\none 890 890\n'
++ 'pre_data_bits 3\npre_data 0x6\nbits 11\ngap 114000\ntoggle_bit 3' ],
+[ '????', 0, 60, 60, 120, -1, -1, '?', 'MSB'
+, 'flags SPACE_ENC|CONST_LENGTH\nfrequency 38000\nheader 9000 4500\n'
++ 'zero 560 560\none 560 1680\nbits 120\nptrail 560\ngap 1000000' ]
+], key: [ // rccreator.exe start of .data
+'00d34a5256171', 'd04e5c5bdb425', '73d472d4cf7ed', '0228090cacb83',
+'a9faf3a41c7e8', '9fa50bfcb32ec', '9db41a4e248f2', '24297429bb110',
+'1cc696b75dd21', '103a3945d55ab', 'e574cb8b689ea', '176108a1edae4',
+'bb7a23f52f401', 'd8b1a04e857e5', '571dc2e72e63c', '919e85732bfab',
+'81b23eb7f2020', '6651787ad9459', 'd94b8e559c73b', 'dce2c44b7f303',
+'e5dcf46d03086', '02b4684241b5c', 'a9e04ea022662', '08c93d0715a3c',
+'860f2001cf13c', 'f709ce8afcbef', 'bc0551c4de0ee', '7b66bb5a8f1f0',
+'958acaf77f337', 'bc09c72a1fcd6', '039e07eddbf32', 'ad30d8772cd19',
+'c3768bc509407', '31ad547eb61c4', '05ed7465a6acd', '789436ba2f05e',
+'78ea692f7259d', '72725add22b45', '30eb1a099c3ec', 'a7cb36e8db491',
+'5569eabf5164e', '361888336f895', '6cea98e30f7f3', 'd160f6bdd6a4d',
+'2561f0211a4c1', 'b6781f5f4cd68', '4b566f59b7256', '75712f87ed964',
+'d94ae4907dd3f', 'ab4e375c90637', '848959cb2e7b8', '88be89d60f0be',
+'4aec015e3f9fc', '6009c78be422f', '25267164414d3', '590461c60b87b',
+'0138c94d770aa', '63951d9d0aad5', 'dce148bc762e7', '2e99170b23159',
+'694b61bf3c6bf', '60b199e9c5ad4', '41605e21d6247', 'e621a469dd2bc',
+'b254e6330dd02', '84a887c2b32ee', '14eb1666ce6e9', '0e96ee9a611f8',
+'f46a711c2e382', '9aff4043ffc28', '49845c1ae06e7', '6c1ad42ec13f6',
+'dcf104b361a0a', 'fbb85a855614c', '880a854938e6a', '49b37a598628c',
+'b36fcc60e8778', 'd10a20bed02d0', 'e01f4f00134c6', 'cbf5c3f5e45e8',
+'464be8d137c3c', 'ccaaa45336b73', '3a48cdbfec272', '2f11ede31adcb',
+'0c840b605bf95', '4e8f765110b5a', '5322be805e4af', '19c6d594068c0',
+'1d99dd2f1aa81', 'd2b2c9160ece7', 'd27834d76a100', '17e30af01113a',
+'8aa55e77cb59e', 'e6744678efb45', 'a2336a04fc25e', '3f580622ad60f',
+'5f7691861c115', '371b7f98ec2ff', '84abb63c1f48c', 'f05a618d79847',
+'9dd1d1e8d5ac7', '76db036d3f37b', '0180874026f11', 'ecf1f98b5115d',
+'cc47a1411e6f8', '2e2b8645e9d0e', '67768ef26388d', 'a3852f5e01a9a',
+'a1c65ca0ccaad', '6900a5faad03b', 'a1acc412b94ec', '9b25c87678894',
+'6482978190ad8', '56584e7cbf7b3', '0ab07c71a2616', '29852f92be64d',
+'69a5c70aaa3bf', 'da291fff254d5', '9a42f8d32a7b6', '0a6262de2139c',
+'ab9a0d63aaf1f', '1d239a961e12d', '9f84532fbe7d7', '61a50cdfe06b4',
+'d1417d0174f96', '87ebdf3b1f7d5', '5d88e6662a554', 'd35f91d3d5f4e',
+'a6d5c8a1d228a', 'bd263a40a8864', 'e29dd556d4d61', '7c5a8a5be2a13',
+'da7323a9ce7cf', '3ad43a3914792', '4435b38f7dac4', '1a22328330604',
+'231a4d69737ac', '2b5dfee45ed43', '15f59c08cb981', '58d5bf14f5c28',
+'f93cfa10bc7b3', '989d28d6d338c', 'd9111b8f93e9c', 'cb77660c59328',
+'18fd83c8d957f', 'fc5e3be550ab4', '97ec9d8860fc3', 'bcdc2aeb4b077',
+'c76ef9790c94d', 'a4eace8d8e438', 'a44f83d070823', 'b872347564b5d',
+'5d8bd6e8945c6', '5c66240619229', '2525d15428ba0', '5bc472fc00870',
+'e34ab372b6335', 'd6291dec7b777', '64920695e28ec', '1fd2a7ba17158',
+'0ef99a53adc36', '423f8a2fce67e', '85ab97cd38b71', '392ca9c36a782',
+'578fa13feb205', 'bbbbda52cb6c1', '3356d9d3c4e35', '7267830a46100',
+'d0a2c2b4b70cc', '8feade8bb55ef', '1257968530f73', '2916c616ee681',
+'35db1d21e7aee', 'e45c3a7e348eb', 'cb4715b82169c', '87b290d5b250c',
+'82e825a8041d7', '29d950cffa1a1', '5042adb763df5', 'cc0441ce59ccb',
+'51972985cef26', '4fb8eab0c1a9a', 'c04de362f543d', '28598ffcea66d',
+'a9553734af4d9', '48c97619c5997', 'c770d4142c9d8', '9ceac6dc71001',
+'a561af1df50c7', 'a3ebc16ddb203', 'c866d58a09a09', '414b565cac072',
+'164d716abc646', '09f1c3a796c3d', '687186c6e6924', 'fd8eac7df97eb',
+'b6229a0fad585', '43224a21cc879', 'a3d0602ef4004', '091135cb5a878',
+'5700b80a888df', '655741be02d20', '0c605b382c046', 'f99f1279067d7',
+'8b418772b0cfb', 'de82420d27aaa', '9a0850ab36218', 'd71c280a65cf9',
+'6a911b2e07f4e', '207c1929b16ea', '4908b93b0bf98', '2a08610fd44ee',
+'a939a3ecff9c8', '83a94e1cc2e8d', '829ace4a6f225', 'd62d18aba2f02',
+'d688cb4fcc6ab', 'e7679adcef69f', 'f7a051d4d4a71', '0e50626130c72',
+'e8b9fb56ee236', 'c95671e1cb188', '630ae7d0e93b4', 'a8248b1e69e74',
+'b99aba9d245a2', '0b5eff1084376', '2106aefe97453', 'ec5df7e6d9fc7',
+'a0850b59f5676', '1dfb5cea9bc08', '9ff9d2a8124ee', '3ec9b5034575a',
+'4afd36ebd167d', '48bbc98b4348d', '913bb9b0d1dd4', '1117518566fb6',
+'828072e2626b7', '02efae29b470d', '91f21fe42bfed', 'c92a7cf09f50e',
+'65b60a369be9b', '5a0c933615d60', '41a0459cd76d9', '330bf06eeddb3',
+'4724a3f528495', '38b420105cf65', '10fe09705d88a', 'bc21ae5cd8a7f',
+'1c9dab6565bb1', '90f5b6c40ba80', '48e876f710e96', 'a106c11ec58c5',
+'cdacbce10068a', '2e49bcd449d1a', '5d1a97af5fe47', '9485cedd7a86b'
+], perm: [
+'1a3467895bc20', '19b246ac07538', '95b1374ac0268', '4126c0358a79b',
+'48c570a1369b2', '469a3bc025781', 'b48369ca25017', 'ba215643789c0',
+'abc0357486129', '102467953a8bc', 'bc0318269457a', '437c02156a98b',
+'98457a2b31c06', '53c0698142a7b', '2859ba1704c36', 'a178560429bc3',
+'a13497bc02658', 'c30a21456789b', 'c0b267a143859', '9b3568ac01427',
+'8a05169bc3724', '91763485b2ac0', '37849ab16c025', '68b4901372a5c',
+'2546719abc803', '29abc01367458', '259734abc0168', 'bac0236814579',
+'90ba1c2735486', '286b0c53714a9', '4718ab52c9036', '382ab765c0149',
+'8b1a7324956c0', '01a5496c28b37', 'bc05146789a23', 'a084351b267c9',
+'c690a41538b27', '0138492b5a67c', '146abc0835729', '9c4a5017b3268',
+'c90b128356a47', '0267c13458ab9', '897bc0543a126', '31cb5290a6874',
+'5367128a9cb04', '74086123bc9a5', 'bca0234671895', '304c1726ab985',
+'7cb250813694a', '90b24658a173c', 'bc814a0235679', '8abc071452639',
+'45896bca10372', '12a9bc5367408', '952713468abc0', '25830471a69bc',
+'a10269385b47c', '84b13c026975a', 'b3a40859c6127', '6489a5b327c01',
+'b582c4a103697', '13ab9c0452768', '1367249abc058', '0235a1674b98c',
+'8b132567c0a94', 'c0719a532468b', 'b4c105673a829', '59ab038267c14',
+'5681a24b37c90', '3574689b1ca02', '96c034217a58b', '82659abc30147',
+'439578b0a61c2', 'ca0b478351269', '20865b41379ac', 'ca3069415278b',
+'781c0269a45b3', '21459ac03687b', '12546789acb03', '685937abc1402',
+'7c82b15903a46', 'b0c567892314a', '89a2cb3014567', '23678ab09c541',
+'4703862bc159a', '37896524bac01', '72318ac6b4059', '8c07539162a4b',
+'786ac0b239415', '8136b7c50249a', 'ab14527389c60', '4637891a5bc02',
+'abc0346712895', '9c03412567ab8', '612374ab590c8', '467b253a8c091',
+'058ab236479c1', 'b2ac014673985', 'c861a50b23479', '150b2468397ac',
+'43569b7ca0812', '4c58a16b03279', '317689245bc0a', '439a8b05671c2',
+'758263ac4019b', 'a2b67549c3018', 'b7c9012348a56', '89143602abc75',
+'17ab43c065289', '23ab5c0147896', 'c1657a092348b', 'b02c37568149a',
+'973c1024568ab', '9c042136a87b5', '379b0a461258c', '047b3a2168c95',
+'6bac350127489', '624789a31c0b5', '03728a5c196b4', '9358a24b1c067',
+'497ab6c021358', '0238a7b45619c', '765b342ac8091', '41893ac025b67',
+'61327489bc05a', '5896b1ac37024', 'b08ca52367149', 'a5c12794b0683',
+'7a90315b6c428', '7246c39a58b10', 'ac195672b0348', 'a9bc260435178',
+'b435c02a16789', '804369a715b2c', 'c05123864ab97', '932457681abc0',
+'0214968a375bc', '569728bc01a34', '6bc01374a9582', '86b03791c42a5',
+'762bc0a158394', 'c049a7125b368', '2349ac01658b7', '60ab83245179c',
+'8bc5a04179632', '9b04278ca5136', '9abc081467325', '7498acb053126',
+'8c0b216579a34', '7901ab683c425', '795128b4ac603', 'c0345621789ab',
+'8b09a5c273416', '6845a2379b1c0', 'c52713689ab40', '8953c04ab1276',
+'c0512769348ab', 'b24c0183a9756', '403915726ac8b', '038ab95c46721',
+'9a7b6c0345812', '7c126a4b50893', 'ac801b5923467', 'bc2708a143569',
+'756ab12c49083', '897b6ac051234', 'c0172395b864a', '6a15234879bc0',
+'1357a9c02648b', '25bc9a0637481', '9018253467bca', '026c7351ab489',
+'47681b9ca3025', 'bc0124685397a', '04825937a16bc', '539b71a40268c',
+'81495a736cb20', '58ab4c0136927', '1039278c465ab', '25a348b90c167',
+'a14b7c3256809', '789ac03b52641', '1782569ab0c34', '6bc02a1349785',
+'c046235178ab9', 'b6c095413728a', '36857012ac49b', '79abc58031462',
+'368a129c4b075', '8591a6bc03427', '8bc032516749a', 'a1c2456b83790',
+'c502b1467839a', 'c3b59071648a2', '03bc52147968a', '89abc06245137',
+'60231acb45897', '731246ab589c0', '356194abc0278', '023458a1976bc',
+'236c0185749ab', '8594123bc60a7', '386a42b7c5190', '845c096127ab3',
+'9372c045618ab', '65348902abc17', '258a49b3167c0', '6240891573acb',
+'8346bc921507a', '14690a25738bc', '286bc0315479a', '2569a43b1c087',
+'89b25c01347a6', 'a6149c032b758', '91a6b8c237405', 'b429c1056783a',
+'9bc60132a4587', '9bc0a21345678', '35c7491b2a860', '35782469bca10',
+'9a0b6713c2584', '57a02341b986c', '2718a5c93b046', '0263c81495b7a',
+'7b89ac0213456', '56792ab8c1034', '2167a39b48c05', '8ab02759c1364',
+'14c0369275ab8', '69ab40c873512', '2859ac73604b1', '607859a3b241c',
+'89c4a5b017362', 'bc98a01562347', '7192abc034568', '0125473689bca',
+'31579842abc60', '5169b0a748c23', '5134678ab9c02', '792ba041385c6',
+'4c60137b5289a', '285697b41c3a0', '31045a9c2678b', '2518a6bc03974',
+'025378194abc6', '564378b1c290a', '13478065ab9c2', 'a23c6b9047158',
+'abc0768245139', '18c0357ba4692', '98ac051347b26', '125693ca0b478',
+'6789cab023415', 'abc2780934516', '92a08b5c34167', '7c013b829a456'
+] };
+--></script></body></html>
