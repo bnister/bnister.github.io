@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html><head><title>AnyMote tool</title></head>
+<body><form action="#"><input type="file"></form>
+<a download="lircd.conf">lircd.conf</a><script type="text/javascript"><!--
+// https://jsfiddle.net/xp6hb2uz/
+document.getElementsByTagName('input')[0].onchange = function() {
+    var rd = new FileReader();
+    rd.onload = function(event) {
+        var rem = JSON.parse(event.target.result), first = true, items, i;
+        if (rem.items) items = rem.items;
+        else items = rem.all_codes;
+        var out = '# converted from AnyMote internal format\n'
+            + 'begin remote\n'
+            + 'name ' + rem.name + '\n'
+            + 'flags RAW_CODES\n'
+            + 'eps 30\n'
+            + 'aeps 100\n';
+        for (i = 0; i < items.length; i++) {
+            if (items[i].code1 == 'not_set' ||
+                items[i].code1 == 'arrows_pad') continue;
+            var durs = items[i].code1.split(','), j;
+            var freq = parseInt(durs.shift(), 10);
+            for (j = 0; j < durs.length; j++)
+                durs[j] = Math.round(parseInt(durs[j], 10) * 1e6 / freq).toString();
+            if (first) {
+                first = false;
+                out += 'gap ' + durs.pop() + '\n'
+                    + 'frequency ' + freq.toString() + '\n'
+                    + 'begin raw_codes\n';
+            }
+            else durs.pop();
+            out += '\nname ' + items[i]['function'] + '\n'
+                + durs.join(' ') + '\n';
+        }
+        if (first) out += 'begin raw_codes\n';
+        out += '\nend raw_codes\nend remote\n';
+        document.getElementsByTagName('a')[0].href = URL.createObjectURL(
+            new Blob([ out ], { type: 'text/plain' }));
+    }
+    rd.readAsText(event.target.files[0]);
+}
+--></script></body></html>
