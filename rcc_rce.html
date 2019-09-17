@@ -81,7 +81,7 @@ document.getElementsByTagName('button')[1].onclick = function() {
     for (j = 0; j < (2 + 13) * 4; j++) bits.push('0');
     for (j = 0; j < pr[2] - pr[1]; j++) bits[pr[1] + j] = badr[j];
     for (j = 0; j < pr[4] - pr[3]; j++) bits[pr[3] + j] = bcmd[j];
-    // TODO fix Sanyo adr
+    // TODO invert Sanyo, Metz19 adr
     if (pr[5] != -1) for (j = 0; j < pr[6] - pr[5]; j++)
         if (bits[pr[4] + pr[5] - pr[6] + j] == '0') bits[pr[5] + j] = '1';
     if (/^NECx1/.test(pr[7]) && bits[0] == '0') bits[32] = '1';
@@ -185,7 +185,7 @@ var prs = [
 [ '4107',  0, 32, 32, 48, -1, -1, '? (Pan7051)' ],
 [ '0442',  0,  0,  0,  5, -1, -1, '? (SAF1039)' ],
 [ '5485',  0, 16, 16, 32, -1, -1, '? (SAT 4Phase PPM)' ],
-[ '4023',  0,  8, 12, 18,  8, 12, '? (METZ RH51)', 'MSB' ],
+[ '4023',  3,  6, 12, 18,  6, 12, '? (Metz19)', 'MSB' ],
 [ '????', 0, 60, 60, 120, -1, -1, '?', 'MSB' ]
 ];
 var sel = document.getElementsByTagName('select')[0], met = {}, opt, i;
