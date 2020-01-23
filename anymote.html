@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html><head><title>AnyMote tool</title></head>
-<body><form action="#"><input type="file"></form>
-<a download="lircd.conf">lircd.conf</a><script type="text/javascript"><!--
-// https://jsfiddle.net/xp6hb2uz/
+<body><a></a><form action="#"><input type="file"></form>
+<a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
+<script type="text/javascript"><!--
 document.getElementsByTagName('input')[0].onchange = function() {
-    var rd = new FileReader();
+    var rd = new FileReader(), name = event.target.files[0].name;
     rd.onload = function(event) {
         var rem = JSON.parse(event.target.result), first = true, items, out, i;
         if (rem.items) items = rem.items;
@@ -42,8 +43,9 @@ document.getElementsByTagName('input')[0].onchange = function() {
         }
         if (first) out += 'begin raw_codes\n';
         out += '\nend raw_codes\nend remote\n';
-        document.getElementsByTagName('a')[0].href = URL.createObjectURL(
-            new Blob([ out ], { type: 'text/plain' }));
+        var link = document.getElementsByTagName('a')[0];
+        link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
+        link.textContent = link.download = name.replace(/$|\.[^.]*$/i, '.conf');
     }
     rd.readAsText(event.target.files[0]);
 }

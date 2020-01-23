@@ -26,7 +26,7 @@ document.getElementsByTagName('input')[0].onchange = function(event) {
                     ) & 0xf).toString(2)).slice(-4);
             }
             conf += '\n' + (items[i].getElementsByTagName('Name')[0].textContent != ''
-                ? items[i].getElementsByTagName('Name')[0].textContent.replace(/\s/g, '_')
+                ? items[i].getElementsByTagName('Name')[0].textContent.replace(/\s|\#/g, '_')
                 : items[i].getElementsByTagName('Nkey')[0].textContent)
                 + ' 0x' + parseInt(out.substring(
                     Math.min(pr[rcc.adrb], pr[rcc.cmdb], (pr[rcc.ncmdb] == -1 ? pr[rcc.cmdb] : pr[rcc.ncmdb])),
@@ -36,7 +36,7 @@ document.getElementsByTagName('input')[0].onchange = function(event) {
         conf += '\nend codes\nend remote\n';
         var link = document.getElementsByTagName('a')[0];
         link.href = URL.createObjectURL(new Blob([ conf ], { type: 'text/plain' }));
-        link.textContent = link.download = name.replace(/\.xml/i, '.conf');
+        link.textContent = link.download = name.replace(/$|\.[^.]*$/i, '.conf');
     }
     rd.readAsText(event.target.files[0]);
 }
