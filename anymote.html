@@ -6,20 +6,28 @@
 document.getElementsByTagName('input')[0].onchange = function() {
     var rd = new FileReader();
     rd.onload = function(event) {
-        var rem = JSON.parse(event.target.result), first = true, items, i;
+        var rem = JSON.parse(event.target.result), first = true, items, out, i;
         if (rem.items) items = rem.items;
         else items = rem.all_codes;
-        var out = '# converted from AnyMote internal format\n'
+        out = '# converted from AnyMote internal format\n'
             + 'begin remote\n'
             + 'name ' + rem.name + '\n'
             + 'flags RAW_CODES\n'
             + 'eps 30\n'
             + 'aeps 100\n';
         for (i = 0; i < items.length; i++) {
-            if (items[i].code1 == 'not_set' ||
-                items[i].code1 == 'arrows_pad') continue;
-            var durs = items[i].code1.split(','), j;
-            var freq = parseInt(durs.shift(), 10);
+            var code1 = items[i].code1, durs, freq, j;
+            if (code1 == 'not_set' || code1 == 'arrows_pad') continue;
+            if (/^[A-Za-z0-9+/=]+$/.test(code1)) {
+                var enc = atob(code1), pk = 1, pe;
+                code1 = '';
+                for (pe = enc.charCodeAt(0) + 1; pe < enc.length; pe++) {
+                    code1 += String.fromCharCode(enc.charCodeAt(pe) - enc.charCodeAt(pk++));
+                    if (pk > enc.charCodeAt(0)) pk = 1;
+                }
+            }
+            durs = code1.replace(/,$/, '').split(',');
+            freq = parseInt(durs.shift(), 10);
             for (j = 0; j < durs.length; j++)
                 durs[j] = Math.round(parseInt(durs[j], 10) * 1e6 / freq).toString();
             if (first) {
@@ -29,7 +37,7 @@ document.getElementsByTagName('input')[0].onchange = function() {
                     + 'begin raw_codes\n';
             }
             else durs.pop();
-            out += '\nname ' + items[i]['function'] + '\n'
+            out += '\nname ' + items[i]['function'].replace(/\s|\#/g, '_') + '\n'
                 + durs.join(' ') + '\n';
         }
         if (first) out += 'begin raw_codes\n';
