@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html><head><title>Galaxy S4 Universal Remote tool</title></head>
+<body><a></a><form action="#"><input type="file"></form><div style="color:red"></div>
+<a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
+<script type="text/javascript"><!--
+function process(abi) {
+    function passgen(c1, c2, i3, s4, s5, f6, s7) {
+        return String.fromCharCode(c1) + String.fromCharCode(c2) + i3.toString() +
+            s4 + s5.charCodeAt(0).toString() + s5.charCodeAt(1).toString() +
+            Math.E.toString() + Math.log10(f6).toString() + s7;
+    }
+    var abo = new ArrayBuffer(abi.byteLength);
+    var dvi = new DataView(abi), u8i = new Uint8Array(abi), files, i, j, c;
+    var dvo = new DataView(abo), u8o = new Uint8Array(abo), po = 0, pc;
+    var pecd = u8i.length - 22, tabCRC32 = [], pass = [ // assume empty comment
+        passgen(55, 12, 2,     'o\1F@@', 'Gm', 1.3333, "OlM?'"),
+        passgen(45, 22, 20,    '0\1A@@', 'gM', 2.3333, "0lm?'"),
+        passgen(35, 32, 200,   'O\1D55', 'GM', 3.3333, "OL?M'"),
+        passgen(32, 47, 156, 'O)0\5Q@@', 'GM', 9.1846, "oL?-m''")
+    ];
+    var pcd = [], cdlen = [], pof = [], olen = [], poecd;
+    if (u8i.length < 99) throw 'file too short';
+    if (dvi.getUint16(0)  != 0x504b) throw 'not a ZIP archive';
+    if (dvi.getUint32(pecd) != 0x504b0506) throw 'end of central dir corrupt';
+    files = dvi.getUint16(pecd + 8, true);
+    if (dvi.getUint16(pecd + 10, true) != files) throw 'volumes not supported';
+    for (i = 0; i < 256; i++) {
+        c = i;
+        for (j = 0; j < 8; j++) c = c & 1 ? c >>> 1 ^ 0xEDB88320 : c >>> 1;
+        tabCRC32.push(c);
+    }
+    pc = dvi.getUint32(pecd + 16, true);
+    for (i = 0; i < files; i++) {
+        var pf = dvi.getUint32(pc + 42, true), CRC, sz, len, pi, b;
+        if (dvi.getUint32(pc) != 0x504b0102) throw 'central dir record corrupt';
+        if (dvi.getUint32(pf) != 0x504b0304) throw 'local file header corrupt';
+        CRC = dvi.getInt32(pc + 16, true);
+        sz = dvi.getUint32(pc + 20, true);
+        len = 30 + dvi.getUint16(pf + 26, true) + dvi.getUint16(pf + 28, true);
+        u8o.set(u8i.subarray(pf, pf + 30 + len), po);
+        u8o[po + 6] &= ~9;
+        dvo.setInt32(po + 14, CRC, true);
+        dvo.setInt32(po + 22, dvi.getInt32(pc + 24));
+        pof.push(po);
+        pf += len;
+        if (u8i[pc + 8] & 1) {
+            olen.push(sz - 12);
+            dvo.setUint32(po + 18, sz - 12, true);
+            po += len;
+            for (j = 0; j < pass.length; j++) {
+                var key0 = 0x12345678, key1 = 0x23456789, key2 = 0x34567890;
+                c = ~0;
+                for (pi = pf - pass[j].length; pi < pf + sz; pi++) {
+                    if (pi < pf) b = pass[j].charCodeAt(pi - pf + pass[j].length);
+                    else {
+                        b = key2 & 65535 | 2;
+                        b = (b * (b ^ 1)) >>> 8 & 255 ^ u8i[pi];
+                        //if (pi == pf + 11 && b != (CRC >>> 24)) break;
+                        if (pi >= pf + 12) {
+                            u8o[po++] = b;
+                            c = c >>> 8 ^ tabCRC32[c & 255 ^ b];
+                        }
+                    }
+                    key0 = key0 >>> 8 ^ tabCRC32[key0 & 255 ^ b];
+                    key1 = key1 + (key0 & 255);
+                    key1 = ((key1 * 0x8000000 | 0) + key1 * 0x88405 + 1) | 0;
+                    key2 = key2 >>> 8 ^ tabCRC32[key2 & 255 ^ (key1 >>> 24)];
+                }
+                if (~c == CRC) break;
+                po -= sz - 12;
+            }
+            if (j >= pass.length) throw 'decryption failed';
+        }
+        else {
+            olen.push(sz);
+            dvo.setUint32(po + 18, sz, true);
+            u8o.set(u8i.subarray(pf, pf + sz), po + len);
+            po += len + sz;
+        }
+        len = 46 + dvi.getUint16(pc + 28, true) +
+            dvi.getUint16(pc + 30, true) + dvi.getUint16(pc + 32, true);
+        pcd.push(pc);
+        cdlen.push(len);
+        pc += len;
+    }
+    poecd = po;
+    for (i = 0; i < files; i++) {
+        u8o.set(u8i.subarray(pcd[i], pcd[i] + cdlen[i]), po);
+        u8o[po + 8] &= ~9;
+        dvo.setUint32(po + 20, olen[i], true);
+        dvo.setUint32(po + 42, pof[i], true);
+        po += cdlen[i];
+    }
+    u8o.set(u8i.subarray(pecd, pecd + 22), po);
+    dvo.setUint32(po + 16, poecd, true);
+    return u8o.subarray(0, po + 22);
+}
+
+document.getElementsByTagName('input')[0].onchange = function(event) {
+    var rd = new FileReader(), name = event.target.files[0].name;
+    rd.onload = function(event) {
+        try {
+            var link = document.getElementsByTagName('a')[0];
+            link.href = URL.createObjectURL(new Blob([ process(event.target.result) ],
+                { type: 'application/octet-stream' }));
+            link.textContent = link.download = name.replace(/$|\.[^.]*$/i, '.zip');
+        }
+        catch (e) {
+            if (typeof e === 'string') document.getElementsByTagName('div')[0].textContent = e;
+            else throw e;
+        }
+    }
+    rd.readAsArrayBuffer(event.target.files[0]);
+};
+--></script></body></html>
