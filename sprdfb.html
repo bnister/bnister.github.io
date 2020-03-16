@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html><head><title>sprfdb panel tool</title></head>
+<body><form action="#"><input type="file"></form><div style="color:red"></div>
+<a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
+<div><a id="getcode"></a></div><pre></pre><script type="text/javascript"><!--
+function process(ab) {
+    var dv = new DataView(ab), out = '', cnt = new Int32Array(1 << 20);
+    var cntmax = -1, ops = 20, basemax, pass, base, page, ptr, pc;
+    var resolutions = { '240x320':  40, '320x480':   1, // sprd local market
+        '480x800':  15, '480x854':  15, '480x960':  12, '480x960': 21,
+        '540x960':   3, '600x1280':  2, '640x1280':  1,
+        '720x1280': 14, '720x1440': 16, '720x1520':  3, '720x1560': 7,
+        '1080x1920': 1, '1080x2160': 1, '1080x2280': 2 };
+    if (dv.byteLength < 99999) throw 'sprd U-Boot or 3.x kernel image required';
+    for (pc = 0; pc <= dv.byteLength - 4; pc += 4) {
+        var ptr = dv.getInt32(pc, true), page;
+        if (ptr >= 0 && ptr < 9999) continue; // skip null ptr and the like
+        cnt[(ptr - pc + (1 << 11)) >>> 12]++; // assume 4K page
+    } // base adr heuristics: count references pointing to the same page
+    for (pass = 0; pass < 5; pass++) {
+        var cntstr = 0;
+        base = 0; // choose page with max references
+        for (pc = 1; pc < (1 << 20); pc++) if (cnt[pc] > cnt[base]) base = pc;
+        cnt[base] = 0; // another one next time
+        base = base << 12; // usually makes it negative, use getInt32 - base
+        if (dv.getInt32(0) == 0x44485442) { // DHTB signed image
+            base -= 0x200;
+            if (dv.getInt32(512) == 0x414e4452 && dv.getInt32(516) == 0x4f494421)
+                base -= dv.getInt32(512 + 36, true); // ANDROID!
+        }
+        else if (dv.getInt32(0) == 0x414e4452 && dv.getInt32(4) == 0x4f494421)
+            base -= dv.getInt32(36, true); // ANDROID! boot image header page
+        for (pc = 0; pc <= dv.byteLength - 4; pc += 4) {
+            var ptr = dv.getInt32(pc, true) - base + 1;
+            if (ptr > 2 && ptr < dv.byteLength) if (dv.getUint8(ptr - 2) == 0 &&
+                dv.getUint8(ptr - 1) > 64 && dv.getUint8(ptr - 1) < 128 &&
+                dv.getUint8(ptr) > 64 && dv.getUint8(ptr) < 128) cntstr++;
+        } // count referenced strings (2 latin letters preceded by zero byte)
+        if (cntmax >= cntstr) base = basemax;
+        else {
+            cntmax = cntstr;
+            basemax = base;
+        }
+    }
+    out = '// base 0x' + (base >>> 0).toString(16) + '\n';
+    for (pc = 0; pc <= dv.byteLength - 99; pc += 4) {
+        var sdev = 'MAIN', sid = 'FIXME', name = '', spec, type, op, mipiops;
+        var psp = -1, ptyp, pinf, ptim, ppol, pops, pop, j, c, fps;
+        while (psp) {
+            if (psp < 0) { // struct panel_cfg
+                psp = dv.getInt32(pc + 20, true) - base; // .panel
+                if (psp <= 0) psp = dv.byteLength; // continue to panel_spec
+                if (dv.getInt32(pc) || dv.getInt32(pc + 4)) continue; // .list
+                if (Math.abs(dv.getInt32(pc + 8, true)) > 1) continue; // .dev_id
+                sdev = ['UNDEFINE', 'MAIN', 'SUB'][dv.getInt32(pc + 8, true) + 1];
+            }
+            else if (psp != pc) psp = pc; // struct panel_spec
+            else psp = 0; // break out of loop
+            if (psp <= 0 || psp > dv.byteLength - 99) continue;
+            if (dv.getInt32(psp)) continue; // .cap never used in known drivers
+            spec = dv.getUint16(psp + 4, true).toString() + 'x' +
+                dv.getUint16(psp + 6, true).toString();
+            if (resolutions[spec] === undefined) continue;
+            spec = '\t.width = ' + spec.replace('x', ',\n\t.height = ') + ',\n';
+            for (ptyp = psp + 16; ptyp < psp + 64; ptyp += 4) {
+                pinf = dv.getInt32(ptyp, true) - base; // .info
+                if (pinf >= 0 && pinf < dv.byteLength - 99) break;
+            }
+            if (pinf < 0 || pinf > dv.byteLength - 99) continue;
+            pops = dv.getInt32(ptyp + 4, true) - base; // .if_ctrl or .ops?
+            if (pops + base != 0) { // no if_ctrl == NULL in U-Boot
+                fps = dv.getUint32(psp + 8, true); // uint will skip < 0 test
+                ptyp = psp + 12;
+            }
+            else { // kernel struct
+                pops = dv.getInt32(ptyp + 8, true) - base;
+                ptyp = ptyp > psp + 32 ? psp + 4 : psp; // skip .display_ or ._hw
+                if (dv.getInt32(ptyp + 8)) spec += '\t.reset_timing = {' +
+                    dv.getUint16(ptyp + 8, true).toString() + ', ' +
+                    dv.getUint16(ptyp + 10, true).toString() + ', ' +
+                    dv.getUint16(ptyp + 12, true).toString() + '},\n';
+                fps = dv.getUint32(ptyp + 16, true); // uint will skip < 0 test
+                if (dv.getUint16(ptyp + 20)) spec += '\t.suspend_mode = SEND_SLEEP_CMD,\n';
+                if (dv.getUint8(ptyp + 26)) spec += '\t.is_clean_lcd = true,\n';
+                ptyp += 22;
+            }
+            if (pops < 0 || pops > dv.byteLength - 99 || fps > 70) continue;
+            if (dv.getUint16(ptyp, true) > 4 || dv.getUint16(ptyp + 2, true) > 6) continue;
+            type = ['mcu', 'rgb', 'mipi', 'lvds', 'spi'][dv.getUint16(ptyp, true)];
+            if (fps > 0) spec += '\t.fps = ' + fps.toString() + ',\n';
+            spec += '\t.type = SPRDFB_PANEL_TYPE_' + type.toUpperCase() + ',\n';
+            spec += '\t.direction = LCD_DIRECT_' + [ 'NORMAL', 'ROT_90', 'ROT_180', 'ROT_270',
+                'MIR_H', 'MIR_V', 'MIR_HV' ][dv.getUint16(ptyp + 2, true)] + ',\n';
+            break;
+        }
+        if (psp <= 0) continue;
+        if (psp == pc) name = 'lcd_at' + psp.toString(16); // panel_cfg not found
+        else {
+            sid = '0x' + dv.getUint32(pc + 12, true).toString(16); // .lcd_id
+            j = dv.getInt32(pc + 16, true) - base; // .lcd_name
+            if (j > 0) while (j < dv.byteLength && (c = dv.getUint8(j++))) name += String.fromCharCode(c);
+            pc = dv.getInt32(pc + 20, true) - base; // .panel
+        }
+        out += '\n// === drivers/video/sprdfb/lcd/' + name + '.c\n\n' +
+            '#include "../sprdfb_panel.h"\n\n';
+        if (type == 'mcu') {
+            ptim = dv.getInt32(pinf + 12, true) - base;
+            if (ptim < 0 || ptim > dv.byteLength - 99) ptim = 0; // :-)
+        }
+        else if (type == 'mipi') {
+            mipiops = [ 'mipi_set_cmd_mode(0)', 'mipi_set_video_mode(0)',
+                'mipi_set_lp_mode(0)', 'mipi_set_hs_mode(0)',
+                'mipi_gen_write(2)', 'mipi_gen_read(4)',
+                'mipi_dcs_write(2)', 'mipi_dcs_read(3)',
+                'mipi_force_write(3)', 'mipi_force_read(3)',
+                'mipi_eotp_set(2)' ];
+            ppol = pinf + 12;
+            ptim = dv.getInt32(pinf + 24, true) - base; // older
+            if (ptim < 0 || ptim > dv.byteLength - 99) {
+                ptim = dv.getInt32(pinf + 36, true) - base; // newer
+                if (ptim < 0 || ptim > dv.byteLength - 99) ptim = 0; // :-)
+                else {
+                    ppol += 4; // skip .phy_feq_current
+                    mipiops.splice(4, 0,
+                        'mipi_set_data_lp_mode(0)', 'mipi_set_data_hs_mode(0)');
+                    //mipiops.splice(mipiops.length - 1, 0, 'mipi_write(3)');
+                }
+            }
+        }
+        else if (type == 'spi') ptim = dv.getInt32(pinf + 24, true) - base;
+        if (type == 'mcu' || type == 'mipi' || type == 'spi') {
+            var rv = [ 'self' ], init = ''; // input parameter in r0
+            pop = dv.getInt32(pops, true) - base;
+            if (pop >= 0) for (; pop <= dv.byteLength - 8; pop += 4) { // ARM32
+                var code = dv.getInt32(pop, true), ofs = undefined, code2;
+                if ((code >>> 28) != 14) continue; // condition code Always
+                code2 = dv.getInt32(pop + 4, true);
+                if ((code & 0xff00fff) == 0x2500001 && // subs rd, rn, #1
+                    (code >> 12 & 15) == (code >> 16 & 15) && // rd == rn
+                    typeof rv[code >> 12 & 15] === 'number' &&
+                    ((code2 >>> 4) == 0x1afffff || // bne up a bit
+                     (code2 >>> 4) == 0x0a00000)) // beq down a bit
+                {
+                    init += '\n\tmdelay(' + (rv[code >> 12 & 15] - 1).toString() + ');\n';
+                    rv[code >> 12 & 15] = 0; // zero often reused by compiler
+                }
+                if ((code & 0xff00000) == 0x2800000) { // add rd, rn, #imm, ror
+                    ofs = (code & 255) >> (code >> 7 & 30) |
+                        (code & 255) << (32 - (code >> 7 & 30)); // a << 32 == a
+                    rv[code >> 12 & 15] = rv[code >> 16 & 15] + ofs;
+                    if ((code2 >>> 20) != 0xe89 || // !ldm || rl != rd
+                        (code2 >> 16 & 15) != (code >> 12 & 15)) ofs = undefined;
+                }
+                if ((code & 0xf700000) == 0x5100000) { // ldr rt, [rn +/- #imm]
+                    ofs = code & 0x800000 ? code & 4095 : -(code & 4095);
+                    code2 = 1 << (code >> 12 & 15); // fake ldm { rt }
+                }
+                if (ofs !== undefined) for (j = 0; j < 16; j++) if (code2 & (1 << j)) {
+                    if (rv[code >> 16 & 15] == 'self')
+                        if (dv.getInt32(psp + ofs, true) == pinf + base)
+                            rv[j] = 'self->info.' + type;
+                        else rv[j] = undefined; // self->ops maybe
+                    else if (rv[code >> 16 & 15] == 'self->info.' + type) 
+                        if (dv.getInt32(pinf + ofs - 4, true) == ptim + base)
+                            rv[j] = 'self->info.' + type + '->ops';
+                        else rv[j] = undefined; // dunno
+                    else if (rv[code >> 16 & 15] == 'self->info.' + type + '->ops') {
+                        if (type == 'mcu') op = [
+                            'send_cmd(1)', 'send_cmd_data(2)',
+                            'send_data(1)', 'read_data(0)' ][ofs >> 2];
+                        else if (type == 'mipi') op = mipiops[ofs >> 2];
+                        else if (type == 'spi') op = [
+                            'spi_send_cmd(1)', 'spi_send_data(1)',
+                            'spi_read(2)', 'spi_clock_set(1)' ][ofs >> 2];
+                        if (op === undefined) op = type + '_op' + (ofs >> 2).toString() + '(1)';
+                        if (!/send_cmd\(/.test(op)) rv[j] = '\t' + op;
+                        else rv[j] = '\n\t' + op;
+                        op = op.split('(')[0];
+                        init += '\t' + op + '_t ' + op + ' = ' +
+                            'self->info.' + type + '->ops->' + op + ';\n';
+                    } // ldr rt, [fp - #imm] / [pc, #imm]
+                    else if ((code >> 16 & 15) == 0xb) rv[j] = rv[16 + (-ofs >> 2)];
+                    else if ((code >> 16 & 15) == 0xf) rv[j] = dv.getInt32(pop + 8 + ofs, true);
+                    else rv[j] = undefined; // invalidate
+                    ofs += 4;
+                }
+                if ((code & 0xfff0000) == 0x50b0000) // str rt, [fp - #imm]
+                    rv[16 + (code >> 2 & 1023)] = rv[code >> 12 & 15];
+                if ((code & 0xfff0000) == 0x3a00000) rv[code >> 12 & 15] =
+                    (code & 255) >> (code >> 7 & 30) | // mov rd, #imm, ror
+                    (code & 255) << (32 - (code >> 7 & 30)); // a << 32 == a
+                if ((code & 0xff00000) == 0x3400000) rv[code >> 12 & 15] =
+                    code << 12 & 0xf0000000 | rv[code >> 12 & 15] & 65535 |
+                    code << 16 & 0x0fff0000;           // movt rd, #imm16
+                if ((code & 0xff00000) == 0x3000000) rv[code >> 12 & 15] =
+                    code >> 4 & 0xf000 | code & 4095;  // movw rd, #imm16
+                if ((code & 0xfff0ff0) == 0x1a00000) rv[code >> 12 & 15] =
+                    rv[code & 15];                     // mov rd, rm
+                if ((code & 0xffffff0) == 0x12fff30 && // blx
+                    typeof rv[code & 15] === 'string' &&
+                    !(/mipi_..._write\(2\)/.test(rv[code & 15])))
+                {
+                    init += rv[code & 15].split('(')[0] + '(';
+                    for (j = 0; j < parseInt(rv[code & 15].split('(')[1], 10); j++) {
+                        if (j > 0) init += ', ';
+                        if (rv[j] === undefined) init += '?';
+                        else if (typeof rv[j] === 'string') init += rv[j];
+                        else if (rv[j] & ~15) init += '0x' + (rv[j] >>> 0).toString(16).toUpperCase();
+                        else init += '0x0' + rv[j].toString(16).toUpperCase();
+                    }
+                    init += ');\n';
+                    rv[0] = undefined;
+                }
+                if ((code & 0xffffff0) == 0x12fff30 && // blx
+                    typeof rv[code & 15] === 'string' &&
+                    /mipi_..._write\(2\)/.test(rv[code & 15]) &&
+                    typeof rv[0] === 'number' &&
+                    rv[0] >= base + 4 && rv[0] < base + dv.byteLength - 99)
+                {
+                    var pinit = rv[0] - 4 - base, step = undefined;
+                    for (; pinit <= dv.byteLength - 4; pinit += step) {
+                        var tag = dv.getInt32(pinit, true), len = tag & ((1 << 24) - 1);
+                        if ((tag >> 24) < 1 || (tag >> 24) > 2 || len > 999) break;
+                        if (step === undefined) {
+                            j = pinit + 4 + len;
+                            if (j > 0) while (j < dv.byteLength && dv.getUint8(j) == 0) j++;
+                            j = j & ~3; // next pinit
+                            step = j - pinit;
+                            out += '#define MAX_DATA   ' + (step - 4).toString() + '\n\n' +
+                                'typedef struct LCM_Init_Code_tag {\n' +
+                                '\tunsigned int tag;\n' +
+                                '\tunsigned char data[MAX_DATA];\n' +
+                                '} LCM_Init_Code;\n\n' +
+                                '#define LCM_TAG_SHIFT 24\n' +
+                                '#define LCM_TAG_MASK  ((1 << 24) - 1)\n' +
+                                '#define LCM_SEND(len) ((1 << LCM_TAG_SHIFT) | len)\n' +
+                                '#define LCM_SLEEP(ms) ((2 << LCM_TAG_SHIFT) | ms)\n' +
+                                '#define LCM_TAG_SEND  (1 << 0)\n' +
+                                '#define LCM_TAG_SLEEP (1 << 1)\n' +
+                                '//#define ARRAY_SIZE(array) (sizeof(array) / sizeof(array[0]))\n\n' +
+                                'static LCM_Init_Code init_data[] = {\n';
+                        }
+                        out += '\t{LCM_' + [ '', 'SEND', 'SLEEP' ][tag >> 24] +
+                            '(' + len.toString() + ')';
+                        if ((tag >> 24) == 1) for (j = 0; j < len; j++) {
+                            if (j == 0) out += ', {';
+                            c = dv.getUint8(pinit + 4 + j);
+                            if (len > 2 && j < 2) out += c.toString();
+                            else if (c & ~15) out += '0x' + c.toString(16).toUpperCase();
+                            else out += '0x0' + c.toString(16).toUpperCase();
+                            if (j + 1 == len) out += '}';
+                            else out += ',';
+                        }
+                        out += '},\n'
+                    }
+                    if (step !== undefined) out += '};\n\n';
+                    if (step !== undefined) init +=
+                        '\tfor (i = 0; i < ARRAY_SIZE(init_data); i++) {\n' +
+                        '\t\tif (init->tag & (LCM_TAG_SEND << LCM_TAG_SHIFT)) {\n' +
+                        '\t\t' + rv[code & 15].split('(')[0] + '(init->data, (init->tag & LCM_TAG_MASK));\n' +
+                        '\t\t\tudelay(20);\n\t\t}\n' +
+                        '\t\telse if (init->tag & (LCM_TAG_SLEEP << LCM_TAG_SHIFT)) {\n' +
+                        '\t\t\tmsleep((init->tag & LCM_TAG_MASK));\n\t\t}\n' +
+                        '\t\tinit++;\n\t}\n';
+                    rv[0] = undefined;
+                }
+                if ((code & 0xfffffff) == 0x12fff1d) break; // bx lr
+                if ((code & 0xfff0000) == 0x8bd0000) { // pop
+                    if ((code & 0x8000) == 0) rv[0] = undefined; // exit hook
+                    break;
+                }
+                if ((code & 0xf000000) == 0xb000000) { // bl
+                    init += '\t// bl_' + (pop + 8 + (code << 2 & 0x3fffffc ^ 0x2000000) - 0x2000000).toString(16) + '(';
+                    if (typeof rv[0] === 'number') init += rv[0].toString();
+                    init += ');\n';
+                    rv[0] = undefined;
+                }
+            }
+            if (pop >= 0 && pop < dv.byteLength - 99) {
+                out += 'static int32_t ' + name.replace(/^lcd_|^./, '') +
+                    '_init(struct panel_spec *self)\n{\n';
+                if (/mipi_..._write/.test(init)) out += '\tint32_t i = 0;\n' +
+                    '\tLCM_Init_Code *init = init_data;\n';
+	        out += init;
+                if (rv[0] !== undefined) out += '\treturn ' + rv[0].toString() + ';\n';
+                out += '}\n\n';
+            }
+        }
+        out += 'static struct panel_operations ' + name + '_operations = {\n';
+        for (j = 0; j < ops; j++) {
+            op = j > 0 ? 'op' + j.toString() : 'init';
+            pop = dv.getInt32(pops + j * 4, true) - base;
+            if (pop >= 0 && pop < dv.byteLength) out += '\t.panel_' + op +
+                ' = ' + name.replace(/^lcd_|^./, '') + '_' + op + ',' +
+                ' // ' + ((base + pop) >>> 0).toString(16) +
+                ' @ ' + pop.toString(16) + '\n';
+            else if (base + pop) ops = j; // trim ops count for all panels
+        }
+        out += '};\n\n';
+        if (type == 'mcu') {
+            out += 'static struct timing_mcu ' + name + '_timing[] = {\n';
+            for (j = 0; j <= 1; j++) {
+                out += '\t[MCU_LCD_' + [ 'REGISTER', 'GRAM' ][j] + '_TIMING] = {\n' +
+                    '\t\t.rcss = ' + dv.getUint16(ptim, true).toString() + ',\n' +
+                    '\t\t.rlpw = ' + dv.getUint16(ptim + 2, true).toString() + ',\n' +
+                    '\t\t.rhpw = ' + dv.getUint16(ptim + 4, true).toString() + ',\n' +
+                    '\t\t.wcss = ' + dv.getUint16(ptim + 6, true).toString() + ',\n' +
+                    '\t\t.wlpw = ' + dv.getUint16(ptim + 8, true).toString() + ',\n' +
+                    '\t\t.whpw = ' + dv.getUint16(ptim + 10, true).toString() + ',\n' +
+                    '\t}' + (j < 1 ? ',\n' : '\n};\n\n');
+                ptim += 12;
+            } // te_pol = 16( + 4) te_sync_delay = 32( + 8)
+            out += 'static struct info_mcu ' + name + '_info = {\n' +
+                '\t.bus_mode = LCD_BUS_' + [ '8080', '6080' ][dv.getUint16(pinf, true)] + ',\n' +
+                '\t.bus_width = ' + dv.getUint16(pinf + 2, true).toString() + ',\n' +
+                '\t.bpp = ' + dv.getUint16(pinf + 4, true).toString() + ',\n' +
+                '\t.timing = &' + name + '_timing,\n\t.ops = NULL,\n};\n\n';
+        } // TODO RGB
+        else if (type == 'mipi') {
+            out += 'static struct timing_rgb ' + name + '_timing = {\n' +
+                '\t.hfp = ' + dv.getUint16(ptim, true).toString() + ',\n' +
+                '\t.hbp = ' + dv.getUint16(ptim + 2, true).toString() + ',\n' +
+                '\t.hsync = ' + dv.getUint16(ptim + 4, true).toString() + ',\n' +
+                '\t.vfp = ' + dv.getUint16(ptim + 6, true).toString() + ',\n' +
+                '\t.vbp = ' + dv.getUint16(ptim + 8, true).toString() + ',\n' +
+                '\t.vsync = ' + dv.getUint16(ptim + 10, true).toString() + ',\n};\n\n' +
+                'static struct info_mipi ' + name + '_info = {\n' +
+                '\t.work_mode = SPRDFB_MIPI_MODE_' + [ 'CMD', 'VIDEO' ][dv.getUint16(pinf, true)] + ',\n' +
+                '\t.video_bus_width = ' + dv.getUint16(pinf + 2, true).toString() + ',\n' +
+                '\t.lan_number = ' + dv.getUint32(pinf + 4, true).toString() + ',\n' +
+                '\t.phy_feq = ' + dv.getUint32(pinf + 8, true).toString() + ',\n';
+            for (j = 0; j < 6; j++) out +=
+                '\t.' + [ 'h_sync', 'v_sync', 'de', 'te', 'color_mode',
+                          'shut_down' ][j] + '_pol = SPRDFB_POLARITY_' +
+                [ 'POS', 'NEG' ][dv.getUint16(ppol + j * 2, true)] + ',\n';
+            out += '\t.timing = &' + name + '_timing,\n\t.ops = NULL,\n};\n\n';
+        } // TODO LVDS
+        else if (type == 'spi')
+            out += 'static struct info_spi ' + name + '_info = {\n' +
+                '\t.bus_num = ' + dv.getUint16(pinf + 16, true).toString() + ',\n' +
+                '\t.cs = ' + dv.getUint8(pinf + 24).toString() + ',\n' +
+                '\t.cd_gpio = ' + dv.getUint16(pinf + 10, true).toString() + ',\n' +
+                '\t.spi_mode = ' + dv.getUint16(pinf + 8, true).toString() + ',\n' +
+                '\t.spi_pol_mode = ' + dv.getUint8(pinf + 17).toString() + ',\n' +
+                '\t.speed = ' + dv.getUint32(pinf + 20, true).toString() + ',\n' +
+                '};\n\n';
+        out += 'struct panel_spec ' + name + '_spec = {\n' + spec +
+            '\t.info = {\n\t\t.' + type + ' = &' + name + '_info\n\t},\n' +
+            '\t.ops = &' + name + '_operations,\n};\n\n' +
+            'struct panel_cfg ' + name + ' = {\n' +
+            '\t.dev_id = SPRDFB_' + sdev + 'LCD_ID,\n' +
+            '\t.lcd_id = ' + sid + ',\n' +
+            '\t.lcd_name = "' + name + '",\n' +
+            '\t.panel = &' + name + '_spec,\n};\n\n' +
+            'static int __init ' + name + '_init(void)\n{\n' +
+            '\treturn sprdfb_panel_register(&' + name + ');\n}\n\n' +
+            'subsys_initcall(' + name + '_init);\n';
+    }
+    return out;
+}
+
+document.getElementsByTagName('input')[0].onchange = function(event) {
+    var rd = new FileReader(), name = event.target.files[0].name;
+    rd.onload = function(event) {
+        try {
+            var link = document.getElementById('getcode'), out = process(event.target.result);
+            link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
+            link.textContent = link.download = 'lcd_' + name.replace(/$|\.[^.]*$/i, '.c');
+            document.getElementsByTagName('pre')[0].textContent = out;
+        }
+        catch (e) {
+            if (typeof e === 'string') document.getElementsByTagName('div')[0].textContent = e;
+            else throw e;
+       }
+    }
+    rd.readAsArrayBuffer(event.target.files[0]);
+};
+--></script></body></html>
