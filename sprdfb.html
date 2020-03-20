@@ -1,11 +1,11 @@
 <!DOCTYPE html>
-<html><head><title>sprfdb panel tool</title></head>
-<body><form action="#"><input type="file"></form><div style="color:red"></div>
+<html><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><title>sprfdb panel tool</title></head>
+<body><form action="https://bnister.github.io/sprdfb.html#"><input type="file"></form><div style="color:red"></div>
 <a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
 CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
 <div><a id="getcode"></a></div><pre></pre><script type="text/javascript"><!--
-function process(ab) {
-    var dv = new DataView(ab), out = '', cnt = new Int32Array(1 << 20);
+function process(dv) {
+    var out = '', cnt = new Int32Array(1 << 20);
     var cntmax = -1, ops = 20, basemax, pass, base, page, ptr, pc;
     var resolutions = { '240x320':  40, '320x480':   1, // sprd local market
         '480x800':  15, '480x854':  15, '480x960':  12, '480x960': 21,
@@ -75,7 +75,7 @@ function process(ab) {
             }
             else { // kernel struct
                 pops = dv.getInt32(ptyp + 8, true) - base;
-                ptyp = ptyp > psp + 32 ? psp + 4 : psp; // skip .display_ or ._hw
+                ptyp = ptyp >= psp + 32 ? psp + 4 : psp; // skip .display_ or ._hw
                 if (dv.getInt32(ptyp + 8)) spec += '\t.reset_timing = {' +
                     dv.getUint16(ptyp + 8, true).toString() + ', ' +
                     dv.getUint16(ptyp + 10, true).toString() + ', ' +
@@ -120,34 +120,44 @@ function process(ab) {
             if (ptim < 0 || ptim > dv.byteLength - 99) {
                 ptim = dv.getInt32(pinf + 36, true) - base; // newer
                 if (ptim < 0 || ptim > dv.byteLength - 99) ptim = 0; // :-)
-                else {
-                    ppol += 4; // skip .phy_feq_current
-                    mipiops.splice(4, 0,
-                        'mipi_set_data_lp_mode(0)', 'mipi_set_data_hs_mode(0)');
-                    //mipiops.splice(mipiops.length - 1, 0, 'mipi_write(3)');
-                }
+                else ppol += 4; // skip .phy_feq_current
             }
+            if (ptyp > psp + 22 || ppol > pinf + 12) // new driver
+                mipiops.splice(4, 0, 'mipi_set_data_lp_mode(0)', 'mipi_set_data_hs_mode(0)');
+                //mipiops.splice(mipiops.length - 1, 0, 'mipi_write(3)');
         }
         else if (type == 'spi') ptim = dv.getInt32(pinf + 24, true) - base;
         if (type == 'mcu' || type == 'mipi' || type == 'spi') {
-            var rv = [ 'self' ], init = ''; // input parameter in r0
+            var rv = [ 'self' ], loop = {}, init = ''; // input parameter in r0
             pop = dv.getInt32(pops, true) - base;
             if (pop >= 0) for (; pop <= dv.byteLength - 8; pop += 4) { // ARM32
                 var code = dv.getInt32(pop, true), ofs = undefined, code2;
+                if ((code >>> 20) == 0xea0 || // branch down Always
+                    ((code & 0xf800000) == 0xa800000 && // up to loop
+                     loop[pop + 8 + (code << 2 & 0x1fffffc) - 0x2000000]))
+                {
+                    if (!(code & 0x800000)) loop[pop + 4] = true; // down
+                    pop += 8 + (code << 2 & 0x3fffffc ^ 0x2000000) - 0x2000000;
+                    loop[pop] = false; // first time only
+                    code = dv.getInt32(pop, true);
+                }
                 if ((code >>> 28) != 14) continue; // condition code Always
                 code2 = dv.getInt32(pop + 4, true);
                 if ((code & 0xff00fff) == 0x2500001 && // subs rd, rn, #1
                     (code >> 12 & 15) == (code >> 16 & 15) && // rd == rn
                     typeof rv[code >> 12 & 15] === 'number' &&
+                    rv[code >> 12 & 15] > 1 &&
                     ((code2 >>> 4) == 0x1afffff || // bne up a bit
                      (code2 >>> 4) == 0x0a00000)) // beq down a bit
                 {
                     init += '\n\tmdelay(' + (rv[code >> 12 & 15] - 1).toString() + ');\n';
                     rv[code >> 12 & 15] = 0; // zero often reused by compiler
                 }
-                if ((code & 0xff00000) == 0x2800000) { // add rd, rn, #imm, ror
+                if ((code & 0xff00000) == 0x2400000 || // sub rd, rn, #imm, ror
+                    (code & 0xff00000) == 0x2800000) { // add rd, rn, #imm, ror
                     ofs = (code & 255) >> (code >> 7 & 30) |
-                        (code & 255) << (32 - (code >> 7 & 30)); // a << 32 == a
+                        (code & 255) << (32 - (code >> 7 & 30)); // << 32 ignored
+                    if ((code >> 20 & 15) == 4) ofs = -ofs; // sub
                     rv[code >> 12 & 15] = rv[code >> 16 & 15] + ofs;
                     if ((code2 >>> 20) != 0xe89 || // !ldm || rl != rd
                         (code2 >> 16 & 15) != (code >> 12 & 15)) ofs = undefined;
@@ -189,7 +199,7 @@ function process(ab) {
                     rv[16 + (code >> 2 & 1023)] = rv[code >> 12 & 15];
                 if ((code & 0xfff0000) == 0x3a00000) rv[code >> 12 & 15] =
                     (code & 255) >> (code >> 7 & 30) | // mov rd, #imm, ror
-                    (code & 255) << (32 - (code >> 7 & 30)); // a << 32 == a
+                    (code & 255) << (32 - (code >> 7 & 30)); // << 32 ignored
                 if ((code & 0xff00000) == 0x3400000) rv[code >> 12 & 15] =
                     code << 12 & 0xf0000000 | rv[code >> 12 & 15] & 65535 |
                     code << 16 & 0x0fff0000;           // movt rd, #imm16
@@ -222,6 +232,7 @@ function process(ab) {
                     for (; pinit <= dv.byteLength - 4; pinit += step) {
                         var tag = dv.getInt32(pinit, true), len = tag & ((1 << 24) - 1);
                         if ((tag >> 24) < 1 || (tag >> 24) > 2 || len > 999) break;
+                        if (dv.getUint8(pinit + 4) == 0x28) break; // sleep in
                         if (step === undefined) {
                             j = pinit + 4 + len;
                             if (j > 0) while (j < dv.byteLength && dv.getUint8(j) == 0) j++;
@@ -272,7 +283,7 @@ function process(ab) {
                 }
                 if ((code & 0xf000000) == 0xb000000) { // bl
                     init += '\t// bl_' + (pop + 8 + (code << 2 & 0x3fffffc ^ 0x2000000) - 0x2000000).toString(16) + '(';
-                    if (typeof rv[0] === 'number') init += rv[0].toString();
+                    if (typeof rv[0] === 'number') init += '0x' + (rv[0] >>> 0).toString(16);
                     init += ');\n';
                     rv[0] = undefined;
                 }
@@ -280,7 +291,7 @@ function process(ab) {
             if (pop >= 0 && pop < dv.byteLength - 99) {
                 out += 'static int32_t ' + name.replace(/^lcd_|^./, '') +
                     '_init(struct panel_spec *self)\n{\n';
-                if (/mipi_..._write/.test(init)) out += '\tint32_t i = 0;\n' +
+                if (/init_data/.test(init)) out += '\tint32_t i = 0;\n' +
                     '\tLCM_Init_Code *init = init_data;\n';
 	        out += init;
                 if (rv[0] !== undefined) out += '\treturn ' + rv[0].toString() + ';\n';
@@ -363,17 +374,48 @@ function process(ab) {
 document.getElementsByTagName('input')[0].onchange = function(event) {
     var rd = new FileReader(), name = event.target.files[0].name;
     rd.onload = function(event) {
+        function DataViewBinaryString(binaryString) {
+            var u8 = new Uint8Array(binaryString.length), i;
+            for (i = 0; i < u8.length; i++) u8[i] = binaryString.charCodeAt(i);
+            this._u8 = u8;
+            this.byteLength = u8.length;
+        }
+        DataViewBinaryString.prototype = {
+            getUint8: function(o) { return this._u8[o]; },
+            getUint16: function (o, littleEndian) {
+                var u8 = this._u8;
+                return littleEndian ?
+                    u8[o] | u8[o + 1] << 8 :
+                    u8[o] << 8 | u8[o + 1];
+            },
+            getInt32: function (o, littleEndian) {
+                var u8 = this._u8;
+                return littleEndian ?
+                    u8[o] | u8[o + 1] << 8 | u8[o + 2] << 16 | u8[o + 3] << 24 :
+                    u8[o] << 24 | u8[o + 1] << 16 | u8[o + 2] << 8 | u8[o + 3];
+            },
+            getUint32: function (o, le) { return this.getInt32(o, le) >>> 0; }
+        };
         try {
-            var link = document.getElementById('getcode'), out = process(event.target.result);
-            link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
-            link.textContent = link.download = 'lcd_' + name.replace(/$|\.[^.]*$/i, '.c');
+            var link = document.getElementById('getcode'), out;
+            if (window.DataView) out = process(new DataView(event.target.result));
+            else out = process(new DataViewBinaryString(event.target.result));
             document.getElementsByTagName('pre')[0].textContent = out;
+            try {
+                link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
+            }
+            catch (e) {
+                link.href = 'data:text/plain;base64,' + btoa(out);
+            }
+            link.textContent = link.download = 'lcd_' + name.replace(/$|\.[^.]*$/i, '.c');
         }
         catch (e) {
             if (typeof e === 'string') document.getElementsByTagName('div')[0].textContent = e;
-            else throw e;
+            else alert(e); // FIXME Firefox debug :-)
        }
     }
-    rd.readAsArrayBuffer(event.target.files[0]);
+    if (window.DataView) rd.readAsArrayBuffer(event.target.files[0]);
+    else rd.readAsBinaryString(event.target.files[0]);
 };
---></script></body></html>
+--></script>
+</body></html>
