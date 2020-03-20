@@ -237,6 +237,15 @@ function process(dv) {
                             if (j > 0) while (j < dv.byteLength && dv.getUint8(j) == 0) j++;
                             j = j & ~3; // next pinit
                             step = j - pinit;
+                            j = pinit - step;
+                            if (j >= 0 && (dv.getUint8(j + 3) == 1 || dv.getUint8(j + 3) == 2) &&
+                                (dv.getInt32(j, true) & ((1 << 24) - 1)) >= 2 &&
+                                (dv.getInt32(j, true) & ((1 << 24) - 1)) <= step - 4)
+                            { // one LCM_Init_code seem to be skipped
+                                pinit = j;
+                                tag = dv.getInt32(j, true);
+                                len = tag & ((1 << 24) - 1);
+                            }
                             out += '#define MAX_DATA   ' + (step - 4).toString() + '\n\n' +
                                 'typedef struct LCM_Init_Code_tag {\n' +
                                 '\tunsigned int tag;\n' +
