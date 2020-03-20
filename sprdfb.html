@@ -102,11 +102,9 @@ function process(dv) {
             if (j > 0) while (j < dv.byteLength && (c = dv.getUint8(j++))) name += String.fromCharCode(c);
             pc = dv.getInt32(pc + 20, true) - base; // .panel
         }
-        out += '\n// === drivers/video/sprdfb/lcd/' + name + '.c\n\n' +
-            '#include "../sprdfb_panel.h"\n\n';
         if (type == 'mcu') {
             ptim = dv.getInt32(pinf + 12, true) - base;
-            if (ptim < 0 || ptim > dv.byteLength - 99) ptim = 0; // :-)
+            if (ptim < 0 || ptim > dv.byteLength - 99) continue; // :-(
         }
         else if (type == 'mipi') {
             mipiops = [ 'mipi_set_cmd_mode(0)', 'mipi_set_video_mode(0)',
@@ -115,18 +113,19 @@ function process(dv) {
                 'mipi_dcs_write(2)', 'mipi_dcs_read(3)',
                 'mipi_force_write(3)', 'mipi_force_read(3)',
                 'mipi_eotp_set(2)' ];
-            ppol = pinf + 12;
-            ptim = dv.getInt32(pinf + 24, true) - base; // older
-            if (ptim < 0 || ptim > dv.byteLength - 99) {
-                ptim = dv.getInt32(pinf + 36, true) - base; // newer
-                if (ptim < 0 || ptim > dv.byteLength - 99) ptim = 0; // :-)
-                else ppol += 4; // skip .phy_feq_current
+            for (ppol = pinf + 24; ppol < pinf + 48; ppol += 4) {
+                ptim = dv.getInt32(ppol, true) - base; // .info
+                if (ptim >= 0 && ptim < dv.byteLength - 99) break;
             }
+            if (ptim < 0 || ptim > dv.byteLength - 99) continue; // :-(
+            ppol = ppol > pinf + 24 ? pinf + 16 : pinf + 12; // skip .phy_feq_current
             if (ptyp > psp + 22 || ppol > pinf + 12) // new driver
                 mipiops.splice(4, 0, 'mipi_set_data_lp_mode(0)', 'mipi_set_data_hs_mode(0)');
                 //mipiops.splice(mipiops.length - 1, 0, 'mipi_write(3)');
         }
         else if (type == 'spi') ptim = dv.getInt32(pinf + 24, true) - base;
+        out += '\n// === drivers/video/sprdfb/lcd/' + name + '.c\n\n' +
+            '#include "../sprdfb_panel.h"\n\n';
         if (type == 'mcu' || type == 'mipi' || type == 'spi') {
             var rv = [ 'self' ], loop = {}, init = ''; // input parameter in r0
             pop = dv.getInt32(pops, true) - base;
@@ -306,7 +305,10 @@ function process(dv) {
                 ' = ' + name.replace(/^lcd_|^./, '') + '_' + op + ',' +
                 ' // ' + ((base + pop) >>> 0).toString(16) +
                 ' @ ' + pop.toString(16) + '\n';
-            else if (base + pop) ops = j; // trim ops count for all panels
+            else if (base + pop) {
+                if (j >= 8) ops = j; // trim ops count for all panels
+                break;
+            }
         }
         out += '};\n\n';
         if (type == 'mcu') {
