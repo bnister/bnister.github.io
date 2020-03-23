@@ -7,9 +7,12 @@ CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
 document.getElementsByTagName('input')[0].onchange = function() {
     var rd = new FileReader(), name = event.target.files[0].name;
     rd.onload = function(event) {
-        var rem = JSON.parse(event.target.result), first = true, items, out, i;
+        var first = true, multi = false, items, out, i;
+        var rem = JSON.parse(event.target.result), link;
         if (rem.items) items = rem.items;
         else items = rem.all_codes;
+        for (i = 1; i < items.length; i++) if (items[i]['parent_remote_id'] !=
+            items[0]['parent_remote_id']) multi = true;
         out = '# converted from AnyMote internal format\n'
             + 'begin remote\n'
             + 'name ' + rem.name + '\n'
@@ -38,13 +41,22 @@ document.getElementsByTagName('input')[0].onchange = function() {
                     + 'begin raw_codes\n';
             }
             else durs.pop();
-            out += '\nname ' + items[i]['function'].replace(/\s|\#/g, '_') + '\n'
+            out += '\nname ';
+            if (multi) out += (items[i]['parent_remote_name'] ?
+                items[i]['parent_remote_name'] :
+                items[i]['parent_remote_id']).replace(/\s|\#/g, '_') + '_';
+            out += items[i]['function'].replace(/\s|\#/g, '_') + '\n'
                 + durs.join(' ') + '\n';
         }
         if (first) out += 'begin raw_codes\n';
         out += '\nend raw_codes\nend remote\n';
-        var link = document.getElementsByTagName('a')[0];
-        link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
+        link = document.getElementsByTagName('a')[0];
+        try {
+            link.href = URL.createObjectURL(new Blob([ out ], { type: 'text/plain' }));
+        }
+        catch (e) {
+            link.href = 'data:text/plain;base64,' + btoa(out);
+        }
         link.textContent = link.download = name.replace(/$|\.[^.]*$/i, '.conf');
     }
     rd.readAsText(event.target.files[0]);
