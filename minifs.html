@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html><head><title>NationalChip firmware minifs zlib decompression</title>
+<script src="https://cdn.jsdelivr.net/gh/nodeca/pako@master/dist/pako_inflate.min.js" type="text/javascript"></script>
+</head>
+<body><a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru
+<form action="#"><input type="file"> id <input><input type="reset"></form>
+<a></a><pre></pre><script type="text/javascript"><!--
+function process(abi) {
+    var dvi = new DataView(abi), u8i = new Uint8Array(abi), pi, pc, ps, pe, i, j;
+    for (pi = 0; pi <= abi.byteLength - 0x200; pi += 0x200) // chinese ppl >_<
+        if (dvi.getUint32(pi) == 0xaabcdefa) break;
+    if (pi + 0x200 > abi.byteLength) throw 'partition table not found';
+    var parts = u8i[pi + 4], out =
+        'Partition Version :  ' + dvi.getUint8(pi + 0x1fb).toString() + '\n' +
+        'Partition Count   :  ' + parts.toString() + '\n' +
+        // FIXME flags might be vice versa
+        'Write Protect     :  ' + (dvi.getUint8(pi + 0x1fa) ? 'TRUE' : 'FALSE') + '\n' +
+        'CRC32 Enable      :  ' + (dvi.getUint8(pi + 0x1f9) ? 'TRUE' : 'FALSE') + '\n' +
+        'Table CRC32 store :  ' + (0x100000000 + dvi.getUint32(pi + 0x1fc)).toString(16).slice(-8) + '\n' +
+        'Table CRC32 calc  :  ' + (0x100000000 + CRC32(u8i.subarray(pi, pi + 0x1fc))).toString(16).slice(-8) + '\n' +
+        '===============================================================\n' +
+        'ID NAME    FS      CRC32 st CRC32 ca START    SIZE     USED\n' +
+        '===============================================================\n';
+    for (i = 0, pc = pi + 0x19d, pi += 5; i < parts; i++, pc += 4, pi += 24) {
+        var name = '';
+        for (j = 0; j < 8 && u8i[pi + j]; j++) name += String.fromCharCode(u8i[pi + j]);
+        out += (u8i[pi + 22].toString(10) + '  ').slice(0, 3) + (name + '        ').slice(0, 8);
+        if (u8i[pi + 20] == 0) out += 'RAW     ';
+        else if (u8i[pi + 20] == 2) out += 'CRAMFS  ';
+        else if (u8i[pi + 20] == 0x7f) out += 'MINIFS  ';
+        else out += '?       ';
+        out += (0x100000000 + dvi.getUint32(pc)).toString(16).slice(-8) + ' '
+            +  (0x100000000 + CRC32(u8i.subarray(dvi.getUint32(pi + 16), dvi.getUint32(pi + 16) + dvi.getUint32(pi + 12)))).toString(16).slice(-8) + ' '
+            +  (0x100000000 + dvi.getUint32(pi + 16)).toString(16).slice(-8) + ' '
+            +  (0x100000000 + dvi.getUint32(pi +  8)).toString(16).slice(-8) + ' '
+            +  (0x100000000 + dvi.getUint32(pi + 12)).toString(16).slice(-8) + '\n';
+        if (name == 'DATA' && u8i[pi + 20] == 0x7f) {
+            ps = dvi.getUint32(pi + 16);
+            pe = ps + dvi.getUint32(pi + 8);
+        }
+    }
+    if (ps === undefined) {
+        document.getElementsByTagName('pre')[0].textContent = out;
+        throw 'minifs data partition not found';
+    }
+    var map = [];
+    for (pi = ps; pi < pe; pi += 512)
+        if (u8i[pi + 506] == 0xfc && u8i[pi + 508] == 0xff) {
+            var fileNo = dvi.getUint16(pi + 504, true);
+            if (map[fileNo] === undefined) map[fileNo] = [];
+            map[fileNo][dvi.getUint16(pi + 500, true)] = pi;
+        }
+    out += '===================================\n'
+        +  'id   packed unpacked name\n'
+        +  '===================================\n';
+    for (i = 0; i < map.length; i++) if (map[i] !== undefined) {
+        pi = map[i][0];
+        var name = '';
+        for (j = 1; j < 36 && u8i[pi + j]; j++) name += String.fromCharCode(u8i[pi + j]);
+        map[i][0] = { name: name, packed: dvi.getUint32(pi + 60, true),
+            unpacked: dvi.getUint32(pi + 64, true) };
+        out += (i.toString(10) + '  ').slice(0, 3) 
+            + ('       ' + map[i][0].packed.toString(10)).slice(-8) + ' '
+            + ('       ' + map[i][0].unpacked.toString(10)).slice(-8) + ' '
+            + name + '\n';
+    }
+    document.getElementsByTagName('pre')[0].textContent = out;
+    i = parseInt(document.getElementsByTagName('input')[1].value, 10);
+    if (!isNaN(i)) { // process chunked zlib stream by id
+        var u8z = new Uint8Array(map[i].length * 500 - 500);
+        for (j = 1; j < map[i].length; j++) // rearrange sectors
+            u8z.set(u8i.subarray(map[i][j], map[i][j] + 500), j * 500 - 500);
+        var u8o = new Uint8Array(map[i][0].unpacked + 9999), pz = 0, po = 0;
+        while (pz < map[i][0].packed) {
+            if (u8z[pz] != 0xcd) break; // FIXME understand tail garbage
+            var chunk = u8z[pz + 8] | u8z[pz + 9] << 8;
+            u8o.set(pako.inflate(u8z.subarray(pz + 12, pz + 12 + chunk)), po);
+            pz += 12 + chunk;
+            po += 8192;
+        }
+        var link = document.getElementsByTagName('a')[0];
+        link.href = URL.createObjectURL(new Blob(
+            [ u8o.subarray(0, map[i][0].unpacked) ],
+            { type: 'application/octet-stream' }));
+        link.textContent = link.download = map[i][0].name;
+    }
+}
+
+document.getElementsByTagName('input')[0].onchange = function(event) {
+    var rd = new FileReader();
+    rd.onload = function(event) {
+        process(event.target.result);
+    }
+    rd.readAsArrayBuffer(event.target.files[0]);
+};
+
+var tabCRC32 = new Int32Array(256), i, j, c;
+for (i = 0; i < 256; i++) {
+    c = i;
+    for (j = 0; j < 8; j++) c = c & 1 ? c >>> 1 ^ 0xEDB88320 : c >>> 1;
+    tabCRC32[i] = c;
+}
+
+function CRC32(u8) {
+    var c = ~0, i;
+    for (i = 0; i < u8.length; i++) c = c >>> 8 ^ tabCRC32[c & 255 ^ u8[i]];
+    return ~c;
+}
+--></script></body></html>
