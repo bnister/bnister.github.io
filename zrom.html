@@ -1,0 +1,140 @@
+﻿<!DOCTYPE html>
+<html><head><title>.zfc/.zmd/.zsf utility</title>
+<meta name="viewport" content="width=device-width">
+<style type="text/css">div { margin-bottom: 6px }</style></head>
+<body><div><a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru</div><div>
+.zfc/.zmd/.zsf to .bmp + .zip</div><form action="#"><div>
+<input type="file" onchange="zsplit(event.target.files[0], byId('bmpo'), byId('zipo'), byId('err1'))">
+</div></form><div id="err1" style="color:red"></div>
+<div><a id="bmpo"></div><div><a id="zipo"></div>
+<hr><div>
+.bmp + .zip to .zfc/.zmd/.zsf</div><form action="#"><div>
+.bmp <input type="file" id="bmpi"></div><div>
+.zip <input type="file" id="zipi"></div><div>
+<button onclick="zjoin(byId('bmpi'), byId('zipi'), byId('zxx'), byId('err2'))">
+join</button></div></form><div id="err2" style="color:red"></div>
+<div><a id="zxx"></div><script type="text/javascript"><!--
+function byId(id) { return document.getElementById(id); } // shorthand
+function zsplit(file, bmp, zip, errNode) {
+function process(u8i) { // nested functions are private
+    var dvi = new DataView(u8i.buffer), w = 144, h = 208, ofs = w * h * 4;
+    if (u8i.length < ofs + 9999) throw 'file too short';
+    if (dvi.getUint16(ofs) != 0x5751) throw 'scrambled .zip signature mismatch';
+    var u8b = new Uint8Array(54 + ofs), dvb = new DataView(u8b.buffer), pi, po;
+    dvb.setUint16(0, 0x424d); // BITMAPFILEHEADER.bfType BM
+    dvb.setUint32(2, u8b.length, true); // bfSize
+    dvb.setUint32(10, 54, true); // bfOffBits
+    dvb.setUint32(14, 54 - 14, true); // BITMAPINFOHEADER.biSize
+    dvb.setInt32(18, w, true); // biWidth
+    dvb.setInt32(22, h, true); // biHeight
+    dvb.setUint16(26, 1, true); // biPlanes
+    dvb.setUint16(28, 32, true); // biBitCount
+    dvb.setUint16(34, ofs, true); // biSizeImage
+    for (pi = ofs - w * 4, po = 54; pi >= 0; pi -= w * 4, po += w * 4)
+        u8b.set(u8i.subarray(pi, pi + w * 4), po); // top-down to bottom-up
+    var u8z = new Uint8Array(u8i.length - ofs), dvz = new DataView(u8z.buffer);
+    u8z.set(u8i.subarray(ofs), po = 0);
+    if (dvz.getUint32(po) != 0x57515703) throw 'local file header corrupt';
+    dvz.setUint32(po, 0x504b0304);
+    var compSz = dvz.getUint32(po + 18, true);
+    var nameLen = dvz.getUint16(po + 26, true);
+    var extraLen = dvz.getUint16(po + 28, true);
+    po += 30;
+    for (pi = 0; pi < nameLen; pi++) u8z[po++] ^= 0xe5;
+    po += extraLen + compSz;
+    if (dvz.getUint32(po) != 0x57515702) throw 'central dir header corrupt';
+    dvz.setUint32(po, 0x504b0102);
+    nameLen = dvz.getUint16(po + 28, true);
+    extraLen = dvz.getUint16(po + 30, true);
+    po += 46;
+    for (pi = 0; pi < nameLen; pi++) u8z[po++] ^= 0xe5;
+    po += extraLen;
+    if (dvz.getUint32(po) != 0x57515701) throw 'end of central dir corrupt';
+    dvz.setUint32(po, 0x504b0506);
+    bmp.href = URL.createObjectURL(new Blob([ u8b ], { type: 'image/bmp' }));
+    bmp.textContent = bmp.download = file.name.replace(/$|\.[^.]*$/i, '.bmp');
+    zip.href = URL.createObjectURL(new Blob([ u8z ], { type: 'application/zip' }));
+    zip.textContent = zip.download = file.name.replace(/$|\.[^.]*$/i, '.zip');
+} // zsplit.process
+    var rd = new FileReader();
+    rd.onload = function(event) {
+        try {
+            errNode.textContent = '';
+            process(new Uint8Array(event.target.result));
+        }
+        catch (e) {
+            if (typeof e === 'string') errNode.textContent = e;
+            else throw e;
+        }
+    }
+    rd.readAsArrayBuffer(file);
+} // zsplit
+function zjoin(bmpInput, zipInput, link, errNode) {
+function process(u8b, u8z) { // nested, private
+    var dvb = new DataView(u8b.buffer), pi;
+    if (dvb.getUint16(0) != 0x424d) throw '.bmp signature mismatch';
+    if (u8z[0] != 0x50 || u8z[1] != 0x4b) throw '.zip signature mismatch';
+    var w = dvb.getInt32(18, true); // biWidth
+    var h = dvb.getInt32(22, true); // biHeight
+    if (w != 144 || h != 208) throw '.bmp must be 144x208';
+    var bpp = dvb.getUint16(28, true); // biBitCount
+    if (bpp != 24 && bpp != 32) throw '.bmp must be 24 or 32 bpp';
+    var ofs = w * h * 4, po, px;
+    var u8o = new Uint8Array(ofs + u8z.length), dvo = new DataView(u8o.buffer);
+    for (pi = dvb.getUint32(10, true), po = ofs - w * 4; po >= 0; po -= w * 4)
+        if (bpp == 32) {
+            u8o.set(u8b.subarray(pi, pi + w * 4), po);
+            pi += w * 4;
+        }
+        else for (px = 0; px < w * 4; px += 4, pi += 3) {
+            u8o.set(u8b.subarray(pi, pi + 3), po + px);
+            u8o[po + px + 3] = 255; // 100% opaque
+        }
+    u8o.set(u8z, po = ofs);
+    if (dvo.getUint32(po) != 0x504b0304) throw 'local file header corrupt';
+    dvo.setUint32(po, 0x57515703);
+    var compSz = dvo.getUint32(po + 18, true);
+    var nameLen = dvo.getUint16(po + 26, true);
+    var extraLen = dvo.getUint16(po + 28, true);
+    po += 30;
+    var name = '', ext;
+    for (pi = 0; pi < nameLen; pi++) name += String.fromCharCode(u8o[po + pi]);
+    if (/[\/\\]/.test(name)) throw '.zip with folders unsupported';
+    if (/\.nfc$/i.test(name)) ext = '.zfc';
+    else if (/\.md$/i.test(name)) ext = '.zmd';
+    else if (/\.sfc$/i.test(name)) ext = '.zsf';
+    else throw '.zip file must be .nes/.md/.smc';
+    for (pi = 0; pi < nameLen; pi++) u8o[po++] ^= 0xe5;
+    po += extraLen + compSz;
+    if (dvo.getUint32(po) == 0x504b0304) throw '.zip of many files unsupported';
+    if (dvo.getUint32(po) != 0x504b0102) throw 'central dir header corrupt';
+    dvo.setUint32(po, 0x57515702);
+    nameLen = dvo.getUint16(po + 28, true);
+    extraLen = dvo.getUint16(po + 30, true);
+    po += 46;
+    for (pi = 0; pi < nameLen; pi++) u8o[po++] ^= 0xe5;
+    po += extraLen;
+    if (dvo.getUint32(po) != 0x504b0506) throw 'end of central dir corrupt';
+    dvo.setUint32(po, 0x57515701);
+    link.href = URL.createObjectURL(new Blob([ u8o ], { type: 'application/octet-stream' }));
+    link.textContent = link.download = file.name.replace(/$|\.[^.]*$/i, ext);
+} // zjoin.process
+    var bmpRd = new FileReader(), zipRd = new FileReader(), file = zipInput.files[0];
+    bmpRd.onload = function(event) {
+        var u8b = new Uint8Array(event.target.result);
+        zipRd.onload = function(event) {
+            try {
+                errNode.textContent = '';
+                process(u8b, new Uint8Array(event.target.result));
+            }
+            catch (e) {
+                if (typeof e === 'string') errNode.textContent = e;
+                else throw e;
+            }
+        }
+        zipRd.readAsArrayBuffer(zipInput.files[0]);
+    }
+    bmpRd.readAsArrayBuffer(bmpInput.files[0]);
+} // zjoin
+--></script></body></html>
