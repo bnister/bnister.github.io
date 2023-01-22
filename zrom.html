@@ -104,7 +104,7 @@ function process(u8b, u8z) { // nested, private
     if (/\.nfc$/i.test(name)) ext = '.zfc';
     else if (/\.md$/i.test(name)) ext = '.zmd';
     else if (/\.sfc$/i.test(name)) ext = '.zsf';
-    else throw '.zip file must be .nes/.md/.smc';
+    else throw '.zip must contain .nfc/.md/.sfc';
     for (pi = 0; pi < nameLen; pi++) u8o[po++] ^= 0xe5;
     po += extraLen + compSz;
     if (dvo.getUint32(po) == 0x504b0304) throw '.zip of many files unsupported';
