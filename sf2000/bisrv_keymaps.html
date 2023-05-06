@@ -1,0 +1,101 @@
+﻿<!DOCTYPE html>
+<html><head><title>bisrv.asd key mappings utility</title>
+<meta name="viewport" content="width=device-width">
+<style type="text/css">div { margin-bottom: 6px }</style></head>
+<body><div><a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/">
+CC0</a>: public domain. Questions/ideas to nikita.burnashev (email) gmail.com</div>
+<form action="#"><div>bisrv.asd
+<input type="file" onchange="load(event.target.files[0], byId('err'), byId('out'), byId('ui'))">
+</div></form><div id="err" style="color:red"></div><div><a id="out"></a></div>
+<div id="ui"></div><script type="text/javascript"><!--
+function byId(id) { return document.getElementById(id); } // shorthand
+function load(file, errNode, outNode, uiNode) {
+    var rd = new FileReader();
+    rd.onload = function(event) {
+        var u8 = new Uint8Array(event.target.result);
+        while (uiNode.firstChild) uiNode.removeChild(uiNode.firstChild);
+        if (u8.length != 12648068) { // sanity
+            errNode.textContent = 'file size mismatch';
+            return;
+        }
+        var keymapsOffset = 0x8dbc9c;
+        function getCoreName(coreIndex) {
+            return ['FBA', 'GBA', 'GB/GBC', 'SNES', 'Genesis(MD)/SMS', 'NES'][coreIndex];
+        }
+        // thanks to @notv37 discord.com/channels/741895796315914271/1099465777825972347/1104285497804738640
+        function getButtonMap(coreIndex) {
+            switch (coreIndex) {
+            case 4: // Genesis(MD)/SMS
+            case 0: // FBA FIXME
+                return { 'A': 8, 'B': 0, 'C': 1, 'X': 10, 'Y': 11, 'Z': 9 };
+            case 3: // SNES
+                return { 'A': 8, 'B': 0, 'X': 10, 'Y': 11, 'L': 9, 'R': 1 };
+            default: // GBA, GB/GBC, NES
+                return { 'A': 8, 'B': 0, 'L': 10, 'R': 11, 'X': 9, 'Y': 1 };
+            }
+        }
+        function rebuildOnChange(event) {
+            var core, player, i, j, c;
+            for (core = 0; core < 6; core++) {
+                var btnMap = getButtonMap(core);
+                for (player = 0; player < 2; player++) for (i = 0; i < 6; i++) {
+                    var ofs = keymapsOffset + core * 48 + player * 24 + i * 4;
+                    u8[ofs] = btnMap[byId('sel' + ofs.toString(16)).value];
+                    u8[ofs + 2] = byId('cb' + ofs.toString(16)).checked ? 1 : 0;
+                }
+            }
+            var tabCRC32 = new Int32Array(256);
+            for (i = 0; i < 256; i++) {
+                c = i << 24;
+                for (j = 0; j < 8; j++)
+                    c = c & (1 << 31) ? c << 1 ^ 0x4c11db7 : c << 1;
+                tabCRC32[i] = c;
+            }
+            c = ~0;
+            for (i = 512; i < u8.length; i++)
+                c = c << 8 ^ tabCRC32[c >>> 24 ^ u8[i]];
+            u8[0x18c] = c & 255;
+            u8[0x18d] = c >>> 8 & 255;
+            u8[0x18e] = c >>> 16 & 255;
+            u8[0x18f] = c >>> 24;
+            outNode.href = URL.createObjectURL(new Blob([ u8 ], { type: 'application/octet-stream' }));
+            outNode.textContent = outNode.download = 'bisrv.asd';
+        }
+        var core, player, i;
+        for (core = 0; core < 6; core++) {
+            var coreNode = document.createElement('div');
+            var div = document.createElement('div');
+            div.appendChild(document.createTextNode(getCoreName(core)));
+            coreNode.appendChild(div);
+            var btnMap = getButtonMap(core);
+            for (player = 0; player < 2; player++) for (i = 0; i < 6; i++) {
+                var ofs = keymapsOffset + core * 48 + player * 24 + i * 4;
+                var btnCore, btnPhy = 'P' + (player + 1).toString() + ' ' +
+                    ['X', 'Y' ,'L', 'A', 'B', 'R'][i];
+                var div = document.createElement('div');
+                var sel = document.createElement('select');
+                for (btnCore in btnMap) {
+                    var opt = document.createElement('option');
+                    opt.text = btnCore;
+                    opt.selected = u8[ofs] == btnMap[btnCore];
+                    sel.add(opt);
+                }
+                sel.id = 'sel' + ofs.toString(16);
+                sel.addEventListener('change', rebuildOnChange);
+                div.appendChild(document.createTextNode(btnPhy + ' to '));
+                div.appendChild(sel);
+                var cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.checked = u8[ofs + 2] == 1;
+                cb.id = 'cb' + ofs.toString(16);
+                cb.addEventListener('change', rebuildOnChange);
+                div.appendChild(cb);
+                div.appendChild(document.createTextNode('autofire'));
+                coreNode.appendChild(div);
+            }
+            uiNode.appendChild(coreNode);
+        }
+    }
+    rd.readAsArrayBuffer(file);
+} // load
+--></script></body></html>
