@@ -1,12 +1,13 @@
 ﻿<!DOCTYPE html>
-<html><head><title>bisrv.asd key mappings utility</title>
+<html><head><title>Data Frog SF2000 key mapping tool</title>
 <meta name="viewport" content="width=device-width">
 <style type="text/css">div { margin-bottom: 6px }</style></head>
 <body><div><a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/">
 CC0</a>: public domain. Questions/ideas to nikita.burnashev (email) gmail.com</div>
-<form action="#"><div>bisrv.asd
+<form action="#"><div>original bisrv.asd or a game file
 <input type="file" onchange="load(event.target.files[0], byId('err'), byId('out'), byId('ui'))">
-</div></form><div id="err" style="color:red"></div><div><a id="out"></a></div>
+</div></form><div id="err" style="color:red"></div>
+<div>modified <a id="out">bisrv.asd</a></div>
 <div id="ui"></div><script type="text/javascript"><!--
 function byId(id) { return document.getElementById(id); } // shorthand
 function load(file, errNode, outNode, uiNode) {
@@ -14,36 +15,66 @@ function load(file, errNode, outNode, uiNode) {
     errNode.textContent = '';
     rd.onload = function(event) {
         var u8 = new Uint8Array(event.target.result);
+        outNode.textContent = '';
         while (uiNode.firstChild) uiNode.removeChild(uiNode.firstChild);
-        if (u8.length != 12648068) { // sanity
-            errNode.textContent = 'file size mismatch';
+        var tabOffset, tabNames;
+        if (u8.length == 12647452) { // 3/28
+            tabOffset = 0x8dbc0c;
+            tabNames = ['FBA', 'GBA', 'SNES', 'Genesis(MD)/SMS', 'NES/GB/GBC'];
+        }
+        else if (u8.length == 12648068) { // 4/20
+            tabOffset = 0x8dbc9c;
+            tabNames = ['FBA', 'GBA', 'GB/GBC', 'SNES', 'Genesis(MD)/SMS', 'NES'];
+        }
+        else if (/\.(zfb|zip)$/i.exec(file.name))
+            tabNames = ['FBA'];
+        else if (/\.(zgb|gba|agb|gbz)$/i.exec(file.name))
+            tabNames = ['GBA'];
+        else if (/\.(gbc|gb|sgb)$/i.exec(file.name))
+            tabNames = ['GB/GBC'];
+        else if (/\.(zsf|smc|fig|sfc|gd3|gd7|dx2|bsx|swc)$/i.exec(file.name))
+            tabNames = ['SNES'];
+        else if (/\.(zmd|bin|md|smd|gen|sms)$/i.exec(file.name))
+            tabNames = ['Genesis(MD)/SMS'];
+        else if (/\.(zfc|nes|nfc|fds|unf)$/i.exec(file.name))
+            tabNames = ['NES'];
+        else {
+            errNode.textContent = 'game file not recognized';
             return;
         }
-        var keymapsOffset = 0x8dbc9c;
-        function getCoreName(coreIndex) {
-            return ['FBA', 'GBA', 'GB/GBC', 'SNES', 'Genesis(MD)/SMS', 'NES'][coreIndex];
+        if (tabNames.length == 1) { // game file
+            tabOffset = 0;
+            u8 = new Uint8Array(48);
         }
         // thanks to @notv37 discord.com/channels/741895796315914271/1099465777825972347/1104285497804738640
-        function getButtonMap(coreIndex) {
-            switch (coreIndex) {
-            case 4: // Genesis(MD)/SMS
-            case 0: // FBA FIXME
+        function getButtonMap(index) {
+            if (tabNames[index] == 'Genesis(MD)/SMS')
                 return { 'A': 8, 'B': 0, 'C': 1, 'X': 10, 'Y': 11, 'Z': 9 };
-            case 3: // SNES
+            else if (tabNames[index] == 'FBA') // FIXME
+                return { 'A': 8, 'B': 0, 'C': 1, 'X': 10, 'Y': 11, 'Z': 9 };
+            else if (tabNames[index] == 'SNES')
                 return { 'A': 8, 'B': 0, 'X': 10, 'Y': 11, 'L': 9, 'R': 1 };
-            default: // GBA, GB/GBC, NES
+            else // GBA, GB/GBC, NES
                 return { 'A': 8, 'B': 0, 'L': 10, 'R': 11, 'X': 9, 'Y': 1 };
-            }
         }
         function rebuildOnChange(event) {
-            var core, player, i, j, c;
-            for (core = 0; core < 6; core++) {
-                var btnMap = getButtonMap(core);
+            var tab, player, i, j, c;
+            for (tab = 0; tab < tabNames.length; tab++) {
+                var btnMap = getButtonMap(tab);
                 for (player = 0; player < 2; player++) for (i = 0; i < 6; i++) {
-                    var ofs = keymapsOffset + core * 48 + player * 24 + i * 4;
+                    var ofs = tabOffset + tab * 48 + player * 24 + i * 4;
                     u8[ofs] = btnMap[byId('sel' + ofs.toString(16)).value];
                     u8[ofs + 2] = byId('cb' + ofs.toString(16)).checked ? 1 : 0;
                 }
+            }
+            if (tabNames.length == 1) { // game file
+                outNode.href = URL.createObjectURL(new Blob([ u8 ], { type: 'application/octet-stream' }));
+                outNode.textContent = outNode.download = file.name.replace(
+                    /($|\.[^.]*$)/, function(m, p1) {
+                        return p1.toUpperCase() + '.kmp';
+                    }
+                );
+                return;
             }
             var tabCRC32 = new Int32Array(256);
             for (i = 0; i < 256; i++) {
@@ -62,23 +93,23 @@ function load(file, errNode, outNode, uiNode) {
             outNode.href = URL.createObjectURL(new Blob([ u8 ], { type: 'application/octet-stream' }));
             outNode.textContent = outNode.download = 'bisrv.asd';
         }
-        var core, player, i;
-        for (core = 0; core < 6; core++) {
-            var coreNode = document.createElement('div');
+        var tab, player, i;
+        for (tab = 0; tab < tabNames.length; tab++) {
+            var tabNode = document.createElement('div');
             var div = document.createElement('div');
-            div.appendChild(document.createTextNode(getCoreName(core)));
-            coreNode.appendChild(div);
-            var btnMap = getButtonMap(core);
+            div.appendChild(document.createTextNode(tabNames[tab]));
+            tabNode.appendChild(div);
+            var btnMap = getButtonMap(tab);
             for (player = 0; player < 2; player++) for (i = 0; i < 6; i++) {
-                var ofs = keymapsOffset + core * 48 + player * 24 + i * 4;
-                var btnCore, btnPhy = 'P' + (player + 1).toString() + ' ' +
+                var ofs = tabOffset + tab * 48 + player * 24 + i * 4;
+                var btntab, btnPhy = 'P' + (player + 1).toString() + ' ' +
                     ['X', 'Y' ,'L', 'A', 'B', 'R'][i];
                 var div = document.createElement('div');
                 var sel = document.createElement('select');
-                for (btnCore in btnMap) {
+                for (btntab in btnMap) {
                     var opt = document.createElement('option');
-                    opt.text = btnCore;
-                    opt.selected = u8[ofs] == btnMap[btnCore];
+                    opt.text = btntab;
+                    opt.selected = u8[ofs] == btnMap[btntab];
                     sel.add(opt);
                 }
                 sel.id = 'sel' + ofs.toString(16);
@@ -92,9 +123,10 @@ function load(file, errNode, outNode, uiNode) {
                 cb.addEventListener('change', rebuildOnChange);
                 div.appendChild(cb);
                 div.appendChild(document.createTextNode('autofire'));
-                coreNode.appendChild(div);
+                tabNode.appendChild(div);
             }
-            uiNode.appendChild(coreNode);
+            tabNode.style = 'float: left; margin-right: 1em';
+            uiNode.appendChild(tabNode);
         }
     }
     rd.readAsArrayBuffer(file);
