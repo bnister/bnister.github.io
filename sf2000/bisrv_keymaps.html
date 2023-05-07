@@ -11,6 +11,7 @@ CC0</a>: public domain. Questions/ideas to nikita.burnashev (email) gmail.com</d
 function byId(id) { return document.getElementById(id); } // shorthand
 function load(file, errNode, outNode, uiNode) {
     var rd = new FileReader();
+    errNode.textContent = '';
     rd.onload = function(event) {
         var u8 = new Uint8Array(event.target.result);
         while (uiNode.firstChild) uiNode.removeChild(uiNode.firstChild);
