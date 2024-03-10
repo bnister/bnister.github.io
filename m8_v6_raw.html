@@ -7,9 +7,9 @@ CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru</div>
 <div><form action="#">Open .raw
 <input type="file" onchange="rawLoad(event.target.files[0], byId('sel'), byId('2d'))">
 select index <select id="sel" onchange="rawIndexChange(event.target)"></select>,
-<button onclick="rawIndexDownload()">download .png</button>, edit,
+<button onclick="rawIndexDownload(); return false">download .png</button>, edit,
 replace with <input type="file" onchange="rawReplace(event.target.files[0])">
-then <button onclick="rawDownload()">download .raw</button> back</form></div>
+then <button onclick="rawDownload(); return false">download .raw</button> back</form></div>
 <div><canvas id="2d" width="1280" height="720"></canvas></div>
 <script type="text/javascript"><!--
 function byId(id) { return document.getElementById(id); } // shorthand
@@ -123,7 +123,7 @@ gobj.rawIndexDownload = function() {
 		document.body.removeChild(link);
 		URL.revokeObjectURL(link.href);
 	}, 'image/png');
-}
+};
 gobj.rawReplace = function(file) {
 	var rd = new FileReader();
 	rd.onload = function(event) {
