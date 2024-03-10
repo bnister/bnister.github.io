@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html><head><title>Game Stick Lite M8-V6 .raw image archive tool</title>
+<meta name="viewport" content="width=device-width">
+<style type="text/css">div { margin-bottom: 6px }</style></head>
+<body><div><a rel="license" href="http://creativecommons.org/publicdomain/zero/1.0/deed.ru">
+CC0</a>: public domain. Questions/ideas to ayumu (email) yandex.ru</div>
+<div><form action="#">Open .raw
+<input type="file" onchange="rawLoad(event.target.files[0], byId('sel'), byId('2d'))">
+select index <select id="sel" onchange="rawIndexChange(event.target)"></select>,
+<button onclick="rawIndexDownload()">download .png</button>, edit,
+replace with <input type="file" onchange="rawReplace(event.target.files[0])">
+then <button onclick="rawDownload()">download .raw</button> back</form></div>
+<div><canvas id="2d" width="1280" height="720"></canvas></div>
+<script type="text/javascript"><!--
+function byId(id) { return document.getElementById(id); } // shorthand
+(function(gobj) { // JavaScript closure
+var g2D, gFileName, gDataView, gRaws, gIndex; // private data in closure
+var gWidth = 1280, gHeight = 720;
+function render(index) {
+	var raw = gRaws[index], ofs565 = raw.byteOffset;
+	var imageData = g2D.createImageData(
+		raw.xRight - raw.xLeft,
+		raw.yBottom - raw.yTop
+	);
+	var u8c = imageData.data, ofsRGBA = 0, x, y;
+	for (y = raw.yTop; y < raw.yBottom; y++) {
+		for (x = raw.xLeft; x < raw.xRight; x++) {
+			var RGB565 = gDataView.getUint16(ofs565, true);
+			ofs565 += 2;
+			u8c[ofsRGBA++] = (RGB565 >> 11 & 31) * 255 / 31;
+			u8c[ofsRGBA++] = (RGB565 >> 5 & 63) * 255 / 63;
+			u8c[ofsRGBA++] = (RGB565 & 31) * 255 / 31;
+			u8c[ofsRGBA++] = 255; // opaque
+		}
+	}
+	g2D.globalCompositeOperation = 'difference';
+	g2D.strokeStyle = 'white';
+	g2D.strokeRect(raw.xLeft - 0.5, raw.yTop - 0.5,
+		1 + imageData.width + 1,
+		1 + imageData.height + 1,
+	);
+	g2D.globalCompositeOperation = 'source-over';
+	g2D.putImageData(imageData, raw.xLeft, raw.yTop);
+}
+function convert(img, index) {
+	var raw = gRaws[index], ofs565 = raw.byteOffset;
+	g2D.drawImage(img, raw.xLeft, raw.yTop,
+		raw.xRight - raw.xLeft,
+		raw.yBottom - raw.yTop
+	);
+	var imageData = g2D.getImageData(raw.xLeft, raw.yTop,
+		raw.xRight - raw.xLeft,
+		raw.yBottom - raw.yTop
+	);
+	var u8c = imageData.data, ofsRGBA = 0, x, y;
+	for (y = raw.yTop; y < raw.yBottom; y++) {
+		for (x = raw.xLeft; x < raw.xRight; x++) {
+			var RGB565 = u8c[ofsRGBA++] >> 3 << 11;
+			RGB565 |= u8c[ofsRGBA++] >> 2 << 5;
+			RGB565 |= u8c[ofsRGBA++] >> 3;
+			ofsRGBA++; // skip alpha channel
+			gDataView.setUint16(ofs565, RGB565, true);
+			ofs565 += 2;
+		}
+	}
+}
+gobj.rawLoad = function(file, sel, canvas) {
+	var rd = new FileReader();
+	g2D = canvas.getContext('2d');
+	gFileName = file.name;
+	rd.onload = function(event) {
+		var ofs = 0;
+		gDataView = new DataView(event.target.result);
+		while (sel.firstChild) sel.removeChild(sel.firstChild);
+		gRaws = [];
+		while (gWidth === gDataView.getUint16(ofs + 4, true) &&
+			gHeight === gDataView.getUint16(ofs + 6, true))
+		{
+			var opt, raw = {
+				byteOffset: gDataView.getUint32(ofs, true),
+				xLeft: gDataView.getUint16(ofs + 8, true),
+				yTop: gDataView.getUint16(ofs + 10, true),
+				xRight: gDataView.getUint16(ofs + 12, true),
+				yBottom: gDataView.getUint16(ofs + 14, true) };
+			if (raw.byteOffset >= gDataView.byteLength ||
+				raw.xLeft >= raw.xRight || raw.yTop >= raw.yBottom ||
+				raw.xLeft >= gWidth || raw.yTop >= gHeight ||
+				raw.xRight > gWidth || raw.yBottom > gHeight)
+			{
+				break; // sanity check failed, it's an image data
+			}
+			opt = document.createElement('option');
+			opt.text = gRaws.length.toString();
+			sel.add(opt);
+			gRaws.push(raw);
+			ofs += 16;
+		}
+		render(gIndex = 0);
+	}
+	rd.readAsArrayBuffer(file);
+};
+gobj.rawIndexChange = function(sel) {
+	render(0); // FIXME is index 0 always the background?
+	render(gIndex = parseInt(sel.value));
+};
+gobj.rawIndexDownload = function() {
+	var raw = gRaws[gIndex];
+	var c = document.createElement('canvas'), l2d = c.getContext('2d');
+	c.width = raw.xRight - raw.xLeft;
+	c.height = raw.yBottom - raw.yTop;
+	l2d.putImageData(
+		g2D.getImageData(raw.xLeft, raw.yTop, c.width, c.height),
+		0, 0
+	);
+	c.toBlob(function(blob) {
+		var link = document.createElement('a');
+		link.href = URL.createObjectURL(blob);
+		link.download = gFileName.replace(/\.raw$/i,
+			'_' + ('00' + gIndex.toString()).slice(-3) + '.png'
+		);
+		document.body.appendChild(link);
+		link.click();
+		document.body.removeChild(link);
+		URL.revokeObjectURL(link.href);
+	}, 'image/png');
+}
+gobj.rawReplace = function(file) {
+	var rd = new FileReader();
+	rd.onload = function(event) {
+		var img = new Image();
+		img.src = event.target.result;
+		img.onload = function(event) {
+			convert(img, gIndex);
+		}
+	}
+	rd.readAsDataURL(file);
+};
+gobj.rawDownload = function() {
+	var link = document.createElement('a');
+	link.href = URL.createObjectURL(new Blob([ gDataView ],	{ type: 'application/octet-stream' }));
+	link.download = gFileName;
+	document.body.appendChild(link);
+	link.click();
+	document.body.removeChild(link);
+	URL.revokeObjectURL(link.href);
+};
+})(this); // run the closure on the global object
+--></script></body></html>
